@@ -1,0 +1,1741 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Last.fm Collage Generator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;700&display=swap" rel="stylesheet">
+<!-- config.js가 같은 폴더에 있으면 자동 로드. 없어도 오류 없이 수동 입력으로 폴백 -->
+<script>window.CONFIG = null;</script>
+<script src="./config.js" onerror="console.info('config.js not found — manual input mode')"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+/* ─── LIGHT THEME ─────────────────────────────────────── */
+:root{
+  --bg:#eef0f7;
+  --panel:#ffffff;
+  --card:#f4f5fb;
+  --border:#e0e3f0;
+  --border2:#ccd0e8;
+  --text:#181a2e;
+  --text2:#525678;
+  --muted:#9296b8;
+  --accent:#e8325a;
+  --accent-dim:rgba(232,50,90,.10);
+  --accent-glow:rgba(232,50,90,.22);
+  --green:#00a86b;
+  --r:7px;
+}
+
+html,body{height:100%}
+body{background:var(--bg);color:var(--text);font-family:'DM Mono',monospace;font-size:12px;display:flex;flex-direction:column;overflow:hidden}
+
+/* HEADER */
+header{height:46px;display:flex;align-items:center;gap:11px;padding:0 18px;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--panel);box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.logo{width:28px;height:28px;background:var(--accent);border-radius:50%;display:grid;place-items:center;font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:#fff;flex-shrink:0;box-shadow:0 2px 10px var(--accent-glow)}
+.header-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--text)}
+.header-spacer{flex:1}
+.api-hint{font-size:10px;color:var(--muted)}
+.api-hint a{color:var(--accent);text-decoration:none;font-weight:700}
+.api-hint a:hover{text-decoration:underline}
+.src-chips{display:flex;gap:4px}
+.src-chip{font-size:9px;padding:2px 6px;border-radius:10px;letter-spacing:.03em;white-space:nowrap;border:1px solid}
+.sc-wiki{border-color:rgba(0,80,180,.3);color:rgba(0,70,160,.85);background:rgba(0,80,180,.05)}
+.sc-it  {border-color:rgba(0,130,80,.3); color:rgba(0,110,60,.85); background:rgba(0,130,80,.05)}
+
+/* APP BODY */
+.app-body{display:flex;flex:1;overflow:hidden}
+
+/* ─── SIDEBAR ─────────────────────────────────────────── */
+.sidebar{
+  width:256px;flex-shrink:0;
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;
+  overflow:hidden;
+  background:var(--panel);
+}
+/* sidebar-inner scrolls when accordions expand beyond viewport */
+.sidebar-inner{
+  padding:0;
+  display:flex;flex-direction:column;
+  flex:1;
+  min-height:0;          /* ← critical: lets flex child shrink below content height */
+  overflow-y:auto;       /* ← scroll appears when total accordion height > available */
+  overflow-x:hidden;
+  scrollbar-width:thin;
+  scrollbar-color:var(--border2) transparent;
+}
+.sidebar-inner::-webkit-scrollbar{width:3px}
+.sidebar-inner::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+
+/* Footer always pinned */
+.sidebar-footer{
+  padding:10px 12px;
+  border-top:1px solid var(--border);
+  display:flex;flex-direction:column;
+  gap:6px;
+  flex-shrink:0;
+  background:var(--panel);
+}
+
+/* ── ACCORDION ──────────────────────────────────────────── */
+.acc{
+  display:flex;flex-direction:column;
+  border-bottom:1px solid var(--border);
+  flex-shrink:0;   /* ← accordion panels don't shrink; sidebar-inner scrolls instead */
+}
+.acc:first-child{border-top:1px solid var(--border)}
+
+.acc-header{
+  display:flex;align-items:center;gap:7px;
+  padding:8px 12px;
+  cursor:pointer;user-select:none;
+  transition:background .12s;
+  min-height:36px;
+}
+.acc-header:hover{background:var(--card)}
+.acc-header.open{background:var(--card)}
+
+.acc-icon{font-size:12px;flex-shrink:0;width:18px;text-align:center}
+.acc-title{
+  font-family:'Syne',sans-serif;font-size:9px;font-weight:700;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--text2);flex:1;
+}
+.acc-badge{font-size:8px;color:var(--green);letter-spacing:.03em;white-space:nowrap;margin-right:2px}
+.acc-val{
+  font-size:9px;color:var(--muted);white-space:nowrap;
+  max-width:90px;overflow:hidden;text-overflow:ellipsis;
+}
+.acc-arrow{
+  font-size:8px;color:var(--muted);flex-shrink:0;
+  transition:transform .2s;display:inline-block;margin-left:4px;
+}
+.acc-header.open .acc-arrow{transform:rotate(180deg)}
+
+/* acc-body: max-height trick for smooth animation */
+.acc-body{
+  overflow:hidden;
+  max-height:0;
+  transition:max-height .25s ease, padding .2s ease;
+  padding:0 12px;
+}
+.acc-body.open{
+  max-height:600px;   /* large enough for any panel content */
+  padding:8px 12px 12px;
+}
+
+/* legacy helpers used inside acc-body */
+.section{display:flex;flex-direction:column;gap:6px}
+.sub-label{
+  font-family:'Syne',sans-serif;font-size:8px;font-weight:700;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
+  margin-bottom:2px;
+}
+.auto-tag{font-size:8px;color:var(--green);letter-spacing:.03em;white-space:nowrap;flex-shrink:0}
+
+/* auto-indicator inside sidebar */
+.auto-indicator{
+  margin:8px 12px 10px;flex-shrink:0;
+}
+
+/* INPUTS */
+.input-wrap{position:relative}
+.input-icon{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:11px;pointer-events:none}
+.input-field{
+  width:100%;background:var(--card);
+  border:1px solid var(--border2);border-radius:var(--r);
+  padding:7px 9px 7px 26px;           /* ← reduced from 9px */
+  color:var(--text);font-family:'DM Mono',monospace;font-size:11px;
+  outline:none;transition:border-color .15s,box-shadow .15s
+}
+.input-field:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-dim)}
+.input-field::placeholder{color:var(--muted)}
+
+/* CHIPS */
+.chip-row{display:flex;flex-wrap:wrap;gap:4px}
+.chip{
+  padding:4px 10px;border-radius:20px;
+  border:1px solid var(--border2);
+  font-family:'DM Mono',monospace;font-size:10px;
+  background:transparent;color:var(--text2);
+  cursor:pointer;transition:all .15s;white-space:nowrap
+}
+.chip:hover{border-color:var(--accent);color:var(--accent)}
+.chip.active{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+
+/* GRID BTNS */
+.grid-row{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.grid-btn{
+  border:1px solid var(--border2);border-radius:var(--r);
+  padding:7px 6px;                    /* ← reduced */
+  cursor:pointer;background:transparent;color:var(--text2);
+  transition:all .15s;display:flex;flex-direction:column;align-items:center;gap:2px
+}
+.grid-btn:hover{border-color:var(--accent);color:var(--text)}
+.grid-btn.active{border-color:var(--accent);background:var(--accent-dim);color:var(--accent)}
+.grid-btn-n{font-family:'Syne',sans-serif;font-size:18px;font-weight:800}  /* ← reduced */
+.grid-btn-desc{font-size:9px;opacity:.7}
+
+/* LAYOUT BTNS */
+.layout-row{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
+.layout-btn{
+  border:1px solid var(--border2);border-radius:var(--r);
+  padding:6px 3px 5px;               /* ← reduced */
+  cursor:pointer;background:transparent;color:var(--text2);
+  transition:all .15s;display:flex;flex-direction:column;align-items:center;gap:4px
+}
+.layout-btn:hover{border-color:var(--accent)}
+.layout-btn.active{border-color:var(--accent);background:var(--accent-dim)}
+.lp-cell{background:var(--border2);border-radius:1px;transition:background .15s}
+.layout-btn.active .lp-cell{background:var(--accent);opacity:.55}
+.layout-btn-label{font-family:'Syne',sans-serif;font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text2)}
+.layout-btn.active .layout-btn-label{color:var(--accent)}
+
+/* TOGGLES */
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:2px 0}  /* ← reduced */
+.toggle-label{color:var(--text);font-size:11px}
+.toggle{position:relative;width:32px;height:17px;flex-shrink:0}
+.toggle input{opacity:0;width:0;height:0;position:absolute}
+.toggle-slider{
+  position:absolute;inset:0;
+  background:#ced3e8;                 /* ← visible on light bg */
+  border-radius:9px;cursor:pointer;transition:background .2s
+}
+.toggle-slider::after{
+  content:'';position:absolute;
+  width:11px;height:11px;
+  background:#8890b8;                 /* ← visible on light bg */
+  border-radius:50%;top:3px;left:3px;
+  transition:transform .2s,background .2s
+}
+.toggle input:checked+.toggle-slider{background:var(--accent-dim);border:1px solid var(--accent)}
+.toggle input:checked+.toggle-slider::after{transform:translateX(15px);background:var(--accent)}
+
+/* BUTTONS */
+.btn-generate{
+  width:100%;padding:11px;
+  background:var(--accent);border:none;border-radius:var(--r);
+  color:#fff;font-family:'Syne',sans-serif;font-size:12px;font-weight:800;letter-spacing:.08em;
+  cursor:pointer;transition:all .15s;
+  display:flex;align-items:center;justify-content:center;gap:7px;
+  box-shadow:0 3px 14px var(--accent-glow)
+}
+.btn-generate:hover:not(:disabled){filter:brightness(1.1);transform:translateY(-1px);box-shadow:0 5px 20px var(--accent-glow)}
+.btn-generate:disabled{background:var(--muted);box-shadow:none;cursor:not-allowed}
+.btn-download{
+  width:100%;padding:9px;
+  background:transparent;border:1px solid var(--border2);border-radius:var(--r);
+  color:var(--text2);font-family:'Syne',sans-serif;font-size:11px;font-weight:700;letter-spacing:.05em;
+  cursor:pointer;transition:all .15s
+}
+.btn-download:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.btn-download:disabled{opacity:.3;cursor:not-allowed}
+
+.error-text{color:var(--accent);font-size:10px;line-height:1.5}
+.info-text{color:var(--text2);font-size:10px;line-height:1.5;display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+
+/* config.js 로드 상태 배지 */
+.cfg-badge{
+  font-size:9px;padding:3px 8px;border-radius:5px;
+  display:flex;align-items:center;gap:4px;line-height:1.5;
+}
+.cfg-badge.ok  {background:rgba(0,168,107,.10);color:#007a4d;border:1px solid rgba(0,168,107,.25)}
+.cfg-badge.warn{background:rgba(200,140,0,.08); color:#886600;border:1px solid rgba(200,140,0,.2)}
+.src-badge{padding:1px 5px;border-radius:4px;font-size:9px;border:1px solid;flex-shrink:0}
+.src-lastfm{border-color:rgba(180,0,30,.35);color:rgba(160,0,20,.85)}
+.src-deezer{border-color:rgba(200,80,0,.35);color:rgba(160,60,0,.85)}
+.src-itunes{border-color:rgba(0,100,200,.35);color:rgba(0,80,160,.85)}
+.src-wiki  {border-color:rgba(0,80,180,.35);color:rgba(0,60,150,.85)}
+.divider{height:1px;background:var(--border);margin:1px 0}
+
+.auto-indicator{
+  height:24px;display:flex;align-items:center;justify-content:center;gap:5px;
+  font-size:9px;font-family:'Syne',sans-serif;font-weight:700;letter-spacing:.07em;
+  color:#008055;opacity:0;transition:opacity .4s;
+  border:1px solid rgba(0,168,107,.25);border-radius:var(--r);
+  background:rgba(0,168,107,.07)
+}
+.auto-indicator.on{opacity:1}
+.auto-dot{width:5px;height:5px;border-radius:50%;background:#00a86b;animation:pulse2 1.5s ease-in-out infinite}
+@keyframes pulse2{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+
+/* ─── MAIN AREA ───────────────────────────────────────── */
+.main-area{
+  flex:1;display:flex;align-items:center;justify-content:center;
+  padding:24px;overflow:auto;position:relative;
+  background:linear-gradient(135deg,#eaecf8 0%,#f2f4fc 55%,#e6eaf6 100%)
+}
+.main-area::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse 55% 45% at 50% 50%,rgba(100,80,220,.05) 0%,transparent 65%);
+  pointer-events:none
+}
+.empty-state{text-align:center;display:flex;flex-direction:column;align-items:center;gap:12px;position:relative}
+.empty-icon{font-size:48px;opacity:.25}
+.empty-state h2{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;letter-spacing:-.03em;color:var(--text)}
+.empty-state p{color:var(--text2);font-size:11px;line-height:1.9}
+.canvas-wrapper{position:relative;display:none}
+#collageCanvas{
+  display:block;
+  max-width:calc(100vw - 310px);max-height:calc(100vh - 96px);
+  width:auto;height:auto;
+  box-shadow:0 6px 40px rgba(0,0,0,.18),0 2px 10px rgba(0,0,0,.10),0 0 0 1px rgba(0,0,0,.06)
+}
+
+/* LOADING */
+.loading-overlay{
+  position:absolute;inset:0;
+  background:rgba(238,240,247,.90);   /* ← light overlay */
+  display:none;flex-direction:column;align-items:center;justify-content:center;
+  gap:12px;backdrop-filter:blur(8px);z-index:10
+}
+.spinner{width:34px;height:34px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-label{font-size:11px;color:var(--text2)}
+.loading-progress{width:200px;height:2px;background:var(--border2);border-radius:1px;overflow:hidden}
+.loading-bar{height:100%;background:var(--accent);border-radius:1px;width:0%;transition:width .3s}
+.loading-detail{font-size:10px;color:var(--muted);min-height:14px}
+
+/* ── IMAGE SWAP MODAL ──────────────────────────────── */
+.img-modal-overlay{
+  position:fixed;inset:0;background:rgba(10,12,30,.72);
+  display:none;align-items:center;justify-content:center;z-index:100;
+  backdrop-filter:blur(4px);
+}
+.img-modal-overlay.open{display:flex}
+.img-modal{
+  background:var(--panel);border-radius:10px;
+  border:1px solid var(--border2);
+  padding:20px;width:320px;
+  display:flex;flex-direction:column;gap:14px;
+  box-shadow:0 12px 48px rgba(0,0,0,.25);
+}
+.img-modal-title{
+  font-family:'Syne',sans-serif;font-size:12px;font-weight:800;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--text);
+  display:flex;align-items:center;gap:8px;
+}
+.img-modal-sub{font-size:10px;color:var(--muted)}
+.img-modal-preview{
+  width:100%;aspect-ratio:1;border-radius:6px;
+  background:var(--card);border:1px solid var(--border2);
+  display:flex;align-items:center;justify-content:center;
+  font-size:32px;overflow:hidden;
+}
+.img-modal-preview img{width:100%;height:100%;object-fit:cover}
+.img-modal-tabs{display:flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden}
+.img-tab{
+  flex:1;padding:6px;font-family:'DM Mono',monospace;font-size:10px;
+  background:transparent;border:none;color:var(--text2);cursor:pointer;transition:all .15s;
+}
+.img-tab.active{background:var(--accent);color:#fff;font-weight:700}
+.img-modal-url{
+  width:100%;background:var(--card);border:1px solid var(--border2);border-radius:var(--r);
+  padding:7px 9px;color:var(--text);font-family:'DM Mono',monospace;font-size:10px;
+  outline:none;transition:border-color .15s;
+}
+.img-modal-url:focus{border-color:var(--accent)}
+.img-modal-url::placeholder{color:var(--muted)}
+.img-modal-file-btn{
+  display:block;width:100%;padding:8px;
+  border:1px dashed var(--border2);border-radius:var(--r);
+  background:var(--card);color:var(--text2);font-family:'Syne',sans-serif;
+  font-size:10px;font-weight:700;letter-spacing:.04em;cursor:pointer;
+  transition:all .15s;text-align:center;
+}
+.img-modal-file-btn:hover{border-color:var(--accent);color:var(--accent)}
+.img-modal-actions{display:flex;gap:8px}
+.img-modal-apply{
+  flex:1;padding:9px;background:var(--accent);border:none;border-radius:var(--r);
+  color:#fff;font-family:'Syne',sans-serif;font-size:11px;font-weight:800;
+  letter-spacing:.06em;cursor:pointer;transition:all .15s;
+}
+.img-modal-apply:hover:not(:disabled){filter:brightness(1.1)}
+.img-modal-apply:disabled{background:var(--muted);cursor:not-allowed}
+.img-modal-cancel{
+  padding:9px 14px;background:transparent;border:1px solid var(--border2);border-radius:var(--r);
+  color:var(--text2);font-family:'Syne',sans-serif;font-size:11px;font-weight:700;
+  cursor:pointer;transition:all .15s;
+}
+.img-modal-cancel:hover{border-color:var(--accent);color:var(--accent)}
+.img-modal-reset{
+  width:100%;padding:7px;background:transparent;border:1px solid var(--border2);border-radius:var(--r);
+  color:var(--muted);font-family:'DM Mono',monospace;font-size:10px;
+  cursor:pointer;transition:all .15s;
+}
+.img-modal-reset:hover{border-color:var(--accent);color:var(--accent)}
+
+/* canvas click hint */
+.canvas-edit-hint{
+  position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+  background:rgba(10,12,30,.75);color:rgba(255,255,255,.8);
+  font-family:'DM Mono',monospace;font-size:10px;
+  padding:4px 10px;border-radius:10px;pointer-events:none;
+  opacity:0;transition:opacity .3s;white-space:nowrap;
+}
+.canvas-edit-hint.show{opacity:1}
+#collageCanvas.editable{cursor:crosshair}
+
+/* STATUS BAR */
+.status-bar{
+  position:fixed;bottom:0;left:0;right:0;height:22px;
+  display:flex;align-items:center;gap:14px;padding:0 14px;
+  background:var(--panel);border-top:1px solid var(--border);
+  font-size:10px;color:var(--muted);
+  box-shadow:0 -1px 4px rgba(0,0,0,.04)
+}
+.status-dot{width:6px;height:6px;border-radius:50%;background:var(--muted);flex-shrink:0;transition:background .3s}
+.status-dot.ok{background:var(--green);box-shadow:0 0 5px rgba(0,168,107,.4)}
+.status-dot.err{background:var(--accent)}
+.status-dot.busy{background:#e0a020;animation:pulse 1s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">ƒ</div>
+  <div><div class="header-title">Last.fm Collage</div></div>
+  <div class="header-spacer"></div>
+  <div class="src-chips">
+    <span class="src-chip sc-wiki">🌐 Artist → Discogs/Wiki</span>
+    <span class="src-chip sc-it">🎵 Track → iTunes</span>
+  </div>
+  <div class="api-hint">Last.fm 키 없음?&nbsp;<a href="https://www.last.fm/api/account/create" target="_blank">발급 →</a></div>
+</header>
+
+<div class="app-body">
+
+  <!-- ── SIDEBAR ─────────────────────────────────────── -->
+  <div class="sidebar">
+
+    <!-- sidebar-inner: scrolls when all accordions open -->
+    <div class="sidebar-inner">
+
+      <!-- ① 연결 (기본 열림) -->
+      <div class="acc" id="acc-connect">
+        <div class="acc-header open" onclick="toggleAcc('connect')">
+          <span class="acc-icon">🔑</span>
+          <span class="acc-title">연결</span>
+          <span class="acc-val" id="acc-connect-val"></span>
+          <span class="acc-arrow">▼</span>
+        </div>
+        <div class="acc-body open" id="acc-connect-body">
+          <div class="section">
+            <div id="cfgBadge" class="cfg-badge" style="display:none"></div>
+            <div class="input-wrap">
+              <span class="input-icon">🔑</span>
+              <input type="password" id="apiKey" class="input-field" placeholder="Last.fm API Key">
+            </div>
+            <div class="input-wrap">
+              <span class="input-icon">👤</span>
+              <input type="text" id="username" class="input-field" placeholder="Username">
+            </div>
+            <div id="errorMsg" class="error-text" style="display:none"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ② Discogs (아티스트 타입일 때만 display:flex, 기본 닫힘) -->
+      <div class="acc" id="discogsSection">
+        <div class="acc-header open" id="acc-discogs-header" onclick="toggleAcc('discogs')">
+          <span class="acc-icon">🎼</span>
+          <span class="acc-title">Discogs</span>
+          <span class="acc-badge">선택</span>
+          <span class="acc-arrow">▼</span>
+        </div>
+        <div class="acc-body open" id="acc-discogs-body">
+          <div class="section">
+            <div class="input-wrap">
+              <span class="input-icon">🔐</span>
+              <input type="password" id="discogsToken" class="input-field" placeholder="Personal Access Token">
+            </div>
+            <div class="info-text" style="font-size:9px;color:var(--muted);line-height:1.6">
+              입력 시 Discogs에서 아티스트 사진 우선 검색.<br>
+              <strong style="color:var(--text2)">발급:</strong> discogs.com → Settings → Developers → Generate
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ③ 유형 & 기간 (기본 열림) -->
+      <div class="acc" id="acc-type">
+        <div class="acc-header open" onclick="toggleAcc('type')">
+          <span class="acc-icon">🎛</span>
+          <span class="acc-title">유형 &amp; 기간</span>
+          <span class="acc-val" id="acc-type-val">Artist · 전체</span>
+          <span class="acc-arrow">▼</span>
+        </div>
+        <div class="acc-body open" id="acc-type-body">
+          <div class="section">
+            <div class="sub-label">유형</div>
+            <div class="chip-row" id="typeGroup">
+              <button class="chip active" data-val="artist">🎤 Artist</button>
+              <button class="chip" data-val="album">💿 Album</button>
+              <button class="chip" data-val="track">🎵 Track</button>
+            </div>
+            <div class="info-text" id="typeNote"></div>
+            <div class="sub-label" style="margin-top:6px">기간</div>
+            <div class="chip-row" id="periodGroup">
+              <button class="chip active" data-val="overall">전체</button>
+              <button class="chip" data-val="12month">1년</button>
+              <button class="chip" data-val="6month">6개월</button>
+              <button class="chip" data-val="3month">3개월</button>
+              <button class="chip" data-val="1month">1달</button>
+              <button class="chip" data-val="7day">1주일</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ④ 레이아웃 (기본 열림) -->
+      <div class="acc" id="acc-layout">
+        <div class="acc-header open" onclick="toggleAcc('layout')">
+          <span class="acc-icon">⚏</span>
+          <span class="acc-title">레이아웃</span>
+          <span class="acc-badge">⚡즉시</span>
+          <span class="acc-val" id="acc-layout-val">3×3 · Clean</span>
+          <span class="acc-arrow">▼</span>
+        </div>
+        <div class="acc-body open" id="acc-layout-body">
+          <div class="section">
+            <div class="sub-label">그리드</div>
+            <div class="grid-row" id="gridGroup">
+              <button class="grid-btn active" data-val="3">
+                <span class="grid-btn-n">3×3</span>
+                <span class="grid-btn-desc">Top 9</span>
+              </button>
+              <button class="grid-btn" data-val="5">
+                <span class="grid-btn-n">5×5</span>
+                <span class="grid-btn-desc">Top 25</span>
+              </button>
+            </div>
+            <div class="sub-label" style="margin-top:8px">스타일</div>
+            <div class="layout-row" id="layoutGroup">
+              <button class="layout-btn" data-val="featured">
+                <div style="display:grid;grid-template-columns:2fr 1fr;grid-template-rows:2fr 1fr 1fr;gap:2px;width:40px;height:30px">
+                  <div class="lp-cell" style="grid-row:1/3;background:var(--accent);opacity:.8"></div>
+                  <div class="lp-cell"></div><div class="lp-cell"></div>
+                  <div class="lp-cell" style="grid-column:1/3"></div>
+                </div>
+                <span class="layout-btn-label">Featured</span>
+              </button>
+              <button class="layout-btn active" data-val="clean">
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:2px;width:40px;height:30px">
+                  <div class="lp-cell"></div><div class="lp-cell"></div><div class="lp-cell"></div>
+                  <div class="lp-cell"></div><div class="lp-cell"></div><div class="lp-cell"></div>
+                  <div class="lp-cell"></div><div class="lp-cell"></div><div class="lp-cell"></div>
+                </div>
+                <span class="layout-btn-label">Clean</span>
+              </button>
+              <button class="layout-btn" data-val="masonry">
+                <div style="display:flex;gap:2px;align-items:flex-start;width:40px;height:30px">
+                  <div style="flex:1;display:flex;flex-direction:column;gap:2px">
+                    <div class="lp-cell" style="height:17px"></div><div class="lp-cell" style="height:9px"></div>
+                  </div>
+                  <div style="flex:1;display:flex;flex-direction:column;gap:2px">
+                    <div class="lp-cell" style="height:11px"></div><div class="lp-cell" style="height:15px"></div>
+                  </div>
+                  <div style="flex:1;display:flex;flex-direction:column;gap:2px">
+                    <div class="lp-cell" style="height:19px"></div><div class="lp-cell" style="height:7px"></div>
+                  </div>
+                </div>
+                <span class="layout-btn-label">Masonry</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ⑤ 정보 표시 (기본 닫힘) -->
+      <div class="acc" id="acc-info">
+        <div class="acc-header" onclick="toggleAcc('info')">
+          <span class="acc-icon">🏷</span>
+          <span class="acc-title">정보 표시</span>
+          <span class="acc-badge">⚡즉시</span>
+          <span class="acc-arrow">▼</span>
+        </div>
+        <div class="acc-body" id="acc-info-body">
+          <div class="section">
+            <div class="toggle-row">
+              <span class="toggle-label">아티스트 이름</span>
+              <label class="toggle"><input type="checkbox" id="showArtist" checked><div class="toggle-slider"></div></label>
+            </div>
+            <div class="toggle-row">
+              <span class="toggle-label">앨범 이름</span>
+              <label class="toggle"><input type="checkbox" id="showAlbum"><div class="toggle-slider"></div></label>
+            </div>
+            <div class="toggle-row">
+              <span class="toggle-label">트랙 이름</span>
+              <label class="toggle"><input type="checkbox" id="showTrack"><div class="toggle-slider"></div></label>
+            </div>
+            <div class="toggle-row">
+              <span class="toggle-label">재생 횟수</span>
+              <label class="toggle"><input type="checkbox" id="showCount"><div class="toggle-slider"></div></label>
+            </div>
+            <div class="toggle-row">
+              <span class="toggle-label">순위 번호</span>
+              <label class="toggle"><input type="checkbox" id="showRank"><div class="toggle-slider"></div></label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ⑥ 타이틀 (기본 닫힘) -->
+      <div class="acc" id="acc-title-sec">
+        <div class="acc-header" onclick="toggleAcc('title-sec')">
+          <span class="acc-icon">✏</span>
+          <span class="acc-title">콜라쥬 타이틀</span>
+          <span class="acc-badge">⚡즉시</span>
+          <span class="acc-arrow">▼</span>
+        </div>
+        <div class="acc-body" id="acc-title-sec-body">
+          <div class="section">
+            <div class="input-wrap">
+              <span class="input-icon">✏</span>
+              <input type="text" id="collageTitle" class="input-field" placeholder="e.g. My Top Artists 2024" maxlength="60">
+            </div>
+            <div class="chip-row" id="titlePresets" style="gap:4px"></div>
+            <div class="toggle-row" style="margin-top:4px">
+              <span class="toggle-label" style="font-size:10px">계정명 표시</span>
+              <label class="toggle"><input type="checkbox" id="showUsername" onchange="state.showUsername=this.checked;scheduleRerender()"><div class="toggle-slider"></div></label>
+            </div>
+            <div style="font-size:9px;color:var(--muted);line-height:1.5">
+              꺼짐: <span style="color:var(--text2)">last.fm · 기간</span><br>
+              켜짐: <span style="color:var(--text2)">last.fm/계정명 · 기간</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AUTO indicator (항상 표시) -->
+      <div class="auto-indicator" id="autoIndicator">
+        <div class="auto-dot"></div>AUTO UPDATE ACTIVE
+      </div>
+
+    </div><!-- /sidebar-inner -->
+
+    <!-- always visible footer -->
+    <div class="sidebar-footer">
+      <button class="btn-generate" id="generateBtn" onclick="generateCollage()">
+        <span>▶</span><span>GENERATE</span>
+      </button>
+      <button class="btn-download" id="downloadBtn" onclick="downloadCollage()" disabled>
+        ↓&nbsp;&nbsp;DOWNLOAD PNG
+      </button>
+    </div>
+
+  </div><!-- /sidebar -->
+
+  <!-- ── MAIN CANVAS AREA ──────────────────────────── -->
+  <div class="main-area">
+    <div class="empty-state" id="emptyState">
+      <div class="empty-icon">🎧</div>
+      <h2>Your Scrobbles,<br>Visualized</h2>
+      <p>Last.fm API 키 + 유저이름 입력 후 GENERATE<br><br>
+        <span style="font-size:10px;color:var(--muted)">
+          🎤 아티스트 사진 → Discogs(선택) → Wikipedia → TADB → Deezer<br>
+          💿 앨범 커버 → Last.fm<br>
+          🎵 트랙 앨범아트 → iTunes → Last.fm
+        </span>
+      </p>
+    </div>
+    <div class="canvas-wrapper" id="canvasWrapper">
+      <canvas id="collageCanvas"></canvas>
+      <div class="canvas-edit-hint" id="canvasEditHint">✏ 타일 클릭 → 이미지 교체</div>
+      <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+        <div class="loading-label" id="loadingLabel">데이터 불러오는 중...</div>
+        <div class="loading-progress"><div class="loading-bar" id="loadingBar"></div></div>
+        <div class="loading-detail" id="loadingDetail"></div>
+      </div>
+    </div>
+
+<!-- Image swap modal (outside app-body so z-index works) -->
+<div class="img-modal-overlay" id="imgModalOverlay">
+  <div class="img-modal">
+    <div class="img-modal-title"><span>🖼</span><span id="imgModalArtistName">이미지 교체</span></div>
+    <div class="img-modal-sub">파일 업로드 또는 URL을 입력하세요</div>
+    <div class="img-modal-preview" id="imgModalPreview">
+      <img id="imgModalPreviewImg" src="" alt="" style="display:none">
+      <span id="imgModalPreviewIcon">🎵</span>
+    </div>
+    <div class="img-modal-tabs">
+      <button class="img-tab active" id="tabFile" onclick="switchImgTab('file')">📁 파일 업로드</button>
+      <button class="img-tab" id="tabUrl" onclick="switchImgTab('url')">🔗 URL 입력</button>
+    </div>
+    <div id="imgTabFileContent">
+      <label class="img-modal-file-btn" for="imgFileInput">📂 파일 선택 (jpg, png, webp, gif)</label>
+      <input type="file" id="imgFileInput" accept="image/*" style="display:none" onchange="onImgFileSelected(event)">
+    </div>
+    <div id="imgTabUrlContent" style="display:none">
+      <input type="text" class="img-modal-url" id="imgUrlInput" placeholder="https://example.com/photo.jpg" oninput="onImgUrlInput(this.value)">
+    </div>
+    <div class="img-modal-actions">
+      <button class="img-modal-cancel" onclick="closeImgModal()">취소</button>
+      <button class="img-modal-apply" id="imgApplyBtn" onclick="applyImgSwap()" disabled>적용</button>
+    </div>
+    <button class="img-modal-reset" id="imgResetBtn" onclick="resetImgSwap()" style="display:none">↺ 원본으로 복원</button>
+  </div>
+</div>
+  </div>
+
+</div><!-- /app-body -->
+
+<div class="status-bar">
+  <div class="status-dot" id="statusDot"></div>
+  <span id="statusText">준비됨</span>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════
+const state = {
+  type:'artist', period:'overall', grid:3, layout:'clean',
+  showArtist:true, showAlbum:false, showTrack:false, showCount:false, showRank:false,
+  showUsername:false
+};
+let hasGenerated=false, cachedItems=null, autoTimer=null, isGenerating=false;
+
+// ═══════════════════════════════════════════════════
+// ACCORDION
+// ═══════════════════════════════════════════════════
+// 각 acc id → open 상태 트래킹
+const _accState = {
+  'connect': true,
+  'discogs': true,
+  'type':    true,
+  'layout':  true,
+  'info':    false,
+  'title-sec': false,
+};
+
+function toggleAcc(id){
+  _accState[id] = !_accState[id];
+  _applyAcc(id);
+}
+
+function _applyAcc(id){
+  // header: #acc-{id} > .acc-header  OR  #acc-discogs-header
+  const el = document.getElementById(`acc-${id}`);
+  if(!el) return;
+  const header = el.querySelector('.acc-header');
+  // body: #acc-{id}-body  (더 명확한 id 선택)
+  const body   = document.getElementById(`acc-${id}-body`);
+  if(!header || !body) return;
+  const open = _accState[id];
+  header.classList.toggle('open', open);
+  body.classList.toggle('open', open);
+}
+
+function updateAccSummary(){
+  const typeMap   = {artist:'Artist', album:'Album', track:'Track'};
+  const periodMap = {overall:'전체','12month':'1년','6month':'6개월','3month':'3개월','1month':'1달','7day':'1주일'};
+  const tv = document.getElementById('acc-type-val');
+  if(tv) tv.textContent = `${typeMap[state.type]||state.type} · ${periodMap[state.period]||state.period}`;
+  const lv = document.getElementById('acc-layout-val');
+  if(lv) lv.textContent = `${state.grid}×${state.grid} · ${state.layout[0].toUpperCase()+state.layout.slice(1)}`;
+}
+
+// ═══════════════════════════════════════════════════
+// UI WIRING
+// ═══════════════════════════════════════════════════
+function setActive(g, val){ g.querySelectorAll('[data-val]').forEach(el=>el.classList.toggle('active',el.dataset.val===String(val))); }
+
+function wireChips(id,key,fn){
+  const g=document.getElementById(id);
+  g.querySelectorAll('.chip').forEach(c=>c.addEventListener('click',()=>{
+    setActive(g,c.dataset.val); state[key]=c.dataset.val;
+    if(key==='type') updateTypeNote();
+    updateAccSummary();
+    fn?.();
+  }));
+}
+function wireGrid(fn){
+  const g=document.getElementById('gridGroup');
+  g.querySelectorAll('.grid-btn').forEach(b=>b.addEventListener('click',()=>{
+    setActive(g,b.dataset.val); state.grid=parseInt(b.dataset.val);
+    updateAccSummary(); fn?.();
+  }));
+}
+function wireLayouts(fn){
+  const g=document.getElementById('layoutGroup');
+  g.querySelectorAll('.layout-btn').forEach(b=>b.addEventListener('click',()=>{
+    setActive(g,b.dataset.val); state.layout=b.dataset.val;
+    updateAccSummary(); fn?.();
+  }));
+}
+function wireToggles(fn){
+  ['showArtist','showAlbum','showTrack','showCount','showRank'].forEach(id=>{
+    document.getElementById(id).addEventListener('change',e=>{ state[id]=e.target.checked; fn?.(); });
+  });
+  // showUsername은 onchange 인라인으로 처리
+}
+
+function scheduleRefetch(){ if(!hasGenerated||isGenerating)return; clearTimeout(autoTimer); autoTimer=setTimeout(()=>generateCollage(),500); }
+function scheduleRerender(){ if(!hasGenerated||isGenerating||!cachedItems)return; rerenderCanvas(); }
+
+wireChips('typeGroup','type',()=>{ scheduleRefetch(); updateTitlePresets(); });
+wireChips('periodGroup','period',()=>{ scheduleRefetch(); updateTitlePresets(); });
+wireGrid(scheduleRefetch);
+wireLayouts(scheduleRerender);
+wireToggles(scheduleRerender);
+// init
+setTimeout(()=>{
+  updateTitlePresets();
+  updateTypeNote();
+  // 초기 아코디언 상태 적용 (HTML에 이미 open 클래스 있으나 body id 기반으로 재확인)
+  Object.keys(_accState).forEach(id => _applyAcc(id));
+  updateAccSummary();
+  applyConfig();  // config.js 값 필드에 반영
+}, 50);
+
+// ── config.js 적용 ───────────────────────────────
+// <head>의 <script src="./config.js">로 로드된 window.CONFIG를 읽어 각 필드에 채움
+// config.js가 없으면 window.CONFIG=null(기본값) → 아무것도 안 함
+function applyConfig(){
+  const cfg = window.CONFIG;
+  if(!cfg || typeof cfg !== 'object') return;
+
+  const loaded = [];
+
+  // Last.fm
+  if(cfg.lastfm_api_key){
+    document.getElementById('apiKey').value = cfg.lastfm_api_key;
+    loaded.push('Last.fm Key');
+  }
+  if(cfg.lastfm_username){
+    document.getElementById('username').value = cfg.lastfm_username;
+    loaded.push('Username');
+  }
+
+  // Discogs (구버전 오타 키 이름도 허용)
+  const dTok = cfg.discogs_token || cfg.discogs_tokekn || '';
+  if(dTok){
+    document.getElementById('discogsToken').value = dTok;
+    loaded.push('Discogs');
+  }
+
+  // 로드 결과 배지 표시
+  if(loaded.length){
+    const badge = document.getElementById('cfgBadge');
+    badge.className = 'cfg-badge ok';
+    badge.textContent = '✅ config.js 로드: ' + loaded.join(', ');
+    badge.style.display = 'flex';
+  }
+}
+// Title input: re-render on every keystroke
+document.getElementById('collageTitle').addEventListener('input', () => { scheduleRerender(); updateTitlePresets(); });
+
+function updateTitlePresets(){
+  const typeLabel  = {artist:'Artists',album:'Albums',track:'Tracks'}[state.type]||'Plays';
+  const periodMap  = {overall:'All Time','12month':'1 Year','6month':'6 Months','3month':'3 Months','1month':'1 Month','7day':'1 Week'};
+  const periodLabel= periodMap[state.period]||state.period;
+  const un = document.getElementById('username').value.trim() || 'me';
+  const presets = [
+    `Top ${typeLabel}`,
+    `Top ${typeLabel} · ${periodLabel}`,
+    `${un}'s Top ${typeLabel}`,
+    `${periodLabel} · ${typeLabel}`,
+  ];
+  const container = document.getElementById('titlePresets');
+  container.innerHTML = presets.map(p =>
+    `<button class="chip" style="font-size:9px;padding:3px 8px" onclick="document.getElementById('collageTitle').value=this.textContent;scheduleRerender()">${p}</button>`
+  ).join('');
+}
+
+function updateTypeNote(){
+  const el=document.getElementById('typeNote');
+  const notes={
+    artist:'<span class="src-badge src-wiki">Discogs</span><span class="src-badge src-wiki" style="margin-left:3px">Wikipedia</span><span class="src-badge src-lastfm" style="margin-left:3px">TADB</span> 아티스트 사진',
+    album: '<span class="src-badge src-lastfm">Last.fm</span>앨범 커버아트',
+    track: '<span class="src-badge src-itunes">iTunes</span>수록 앨범 커버'
+  };
+  el.innerHTML=notes[state.type];
+  // Discogs 아코디언 패널: 아티스트 타입일 때만 표시
+  const ds = document.getElementById('discogsSection');
+  ds.style.display = state.type === 'artist' ? '' : 'none';
+}
+
+// ═══════════════════════════════════════════════════
+// STATUS / LOADING
+// ═══════════════════════════════════════════════════
+function setStatus(mode,text){
+  document.getElementById('statusDot').className='status-dot'+(mode?' '+mode:'');
+  document.getElementById('statusText').textContent=text;
+}
+function setLoading(label,detail='',pct=0){
+  document.getElementById('loadingLabel').textContent=label;
+  document.getElementById('loadingDetail').textContent=detail;
+  document.getElementById('loadingBar').style.width=pct+'%';
+}
+function showErr(msg){ const e=document.getElementById('errorMsg'); e.textContent='⚠ '+msg; e.style.display='block'; }
+function clearErr(){ document.getElementById('errorMsg').style.display='none'; }
+
+// ═══════════════════════════════════════════════════
+// LAST.FM API
+// ═══════════════════════════════════════════════════
+const LFMURL='https://ws.audioscrobbler.com/2.0/';
+async function lfmFetchTop(apiKey,username,type,period,limit){
+  const method={artist:'user.gettopartists',album:'user.gettopalbums',track:'user.gettoptracks'}[type];
+  const r=await fetch(`${LFMURL}?method=${method}&user=${encodeURIComponent(username)}&api_key=${encodeURIComponent(apiKey)}&format=json&period=${period}&limit=${limit}`);
+  if(!r.ok) throw new Error(`HTTP ${r.status}`);
+  const d=await r.json();
+  if(d.error) throw new Error(`Last.fm: ${d.message}`);
+  if(type==='artist') return d.topartists?.artist||[];
+  if(type==='album')  return d.topalbums?.album||[];
+  return d.toptracks?.track||[];
+}
+function lfmImageUrl(item){
+  const PH='2a96cbd8b46e442fc41c2b86b821562f';
+  for(const sz of['extralarge','large','mega','medium']){
+    const f=(item.image||[]).find(i=>i.size===sz);
+    if(f?.['#text']&&!f['#text'].includes(PH)&&f['#text'].trim()) return f['#text'];
+  }
+  return null;
+}
+function getLabels(item,type){
+  const an=n=>(typeof n==='string'?n:n?.name)||'';
+  if(type==='artist') return{artist:item.name,album:null,track:null,count:item.playcount};
+  if(type==='album')  return{artist:an(item.artist),album:item.name,track:null,count:item.playcount};
+  return{artist:an(item.artist),album:item.album?.['#text']||null,track:item.name,count:item.playcount};
+}
+
+// ═══════════════════════════════════════════════════
+// STRING MATCH
+// ═══════════════════════════════════════════════════
+function normalize(s){
+  return(s||'').toLowerCase().replace(/[^\w\s]/g,'').replace(/\b(the|a|an)\b/g,'').replace(/\s+/g,' ').trim();
+}
+function matchScore(q,c){
+  const nq=normalize(q),nc=normalize(c);
+  if(!nq||!nc)return 0;
+  if(nq===nc)return 100;
+  if(nc.startsWith(nq)||nq.startsWith(nc))return 80;
+  if(nc.includes(nq)||nq.includes(nc))return 60;
+  const qt=new Set(nq.split(' ').filter(Boolean));
+  const ct=nc.split(' ').filter(Boolean);
+  const shared=ct.filter(t=>qt.has(t)).length;
+  const total=Math.max(qt.size,ct.length);
+  return total>0?Math.round(shared/total*40):0;
+}
+
+// ═══════════════════════════════════════════════════
+// ARTIST IMAGE – 4-TIER STRATEGY
+// 0) Discogs REST  (Personal Token, 최고품질 – 입력 시 우선)
+// 1) Wikipedia API (CORS via origin=*, 강화된 힌트 검색)
+// 2) TheAudioDB    (free key=2, strArtistThumb 1000×1000)
+// 3) Deezer JSONP  (official JSONP callback support)
+// ═══════════════════════════════════════════════════
+
+// ── Tier 0: Discogs ──────────────────────────────
+// 2-STEP: (1) search → get artist ID  (2) /artists/{id} → images[]
+// 이유: search의 cover_image는 릴리스 커버이지 아티스트 사진이 아님.
+// 실제 아티스트 사진은 /artists/{id}.images[type=primary].uri 에만 있음.
+const DISCOGS_HEADERS = tok => ({
+  'Authorization': `Discogs token=${tok}`,
+  'User-Agent'   : 'LastfmCollageGenerator/1.0'
+});
+
+async function discogs_search(token, name){
+  // Step 1: search database for artist
+  const url = `https://api.discogs.com/database/search?q=${encodeURIComponent(name)}&type=artist&per_page=8`;
+  const r = await fetch(url, { headers: DISCOGS_HEADERS(token), signal: AbortSignal.timeout(7000) });
+  if(!r.ok){
+    if(r.status===429) console.warn('Discogs rate limit hit');
+    return null;
+  }
+  const d = await r.json();
+  const results = d?.results || [];
+  if(!results.length) return null;
+
+  // Pick best name match (ignore "(N)" disambiguation suffixes like "윤하 (2)")
+  let best = results[0], bs = -1;
+  for(const a of results){
+    // Strip parenthesized suffixes like " (2)" from Discogs titles
+    const cleanTitle = (a.title || '').replace(/\s*\(\d+\)\s*$/, '').trim();
+    const s = matchScore(name, cleanTitle);
+    if(s > bs){ bs = s; best = a; }
+  }
+  return best;
+}
+
+async function discogs_artistDetail(token, artistId){
+  // Step 2: fetch full artist record to get images[]
+  const url = `https://api.discogs.com/artists/${artistId}`;
+  const r = await fetch(url, { headers: DISCOGS_HEADERS(token), signal: AbortSignal.timeout(7000) });
+  if(!r.ok) return null;
+  return await r.json();
+}
+
+async function discogs_artistImg(token, name){
+  if(!token) return null;
+  try{
+    // ── Step 1: search ──
+    const hit = await discogs_search(token, name);
+    if(!hit?.id) return null;
+
+    // ── Step 2: artist detail (contains real photos) ──
+    const artist = await discogs_artistDetail(token, hit.id);
+    if(!artist) return null;
+
+    const images = artist.images || [];
+    if(!images.length) return null;
+
+    // Prefer primary portrait, then any secondary, then fallback to search thumbnail
+    const SKIP = /spacer|placeholder|noimage|default|blank/i;
+    const primary   = images.find(i => i.type === 'primary'   && i.uri && !SKIP.test(i.uri));
+    const secondary = images.find(i => i.type === 'secondary' && i.uri && !SKIP.test(i.uri));
+    const any       = images.find(i => i.uri && !SKIP.test(i.uri));
+    const chosen = primary || secondary || any;
+
+    // Use uri (full size); uri150 is too small
+    // Do NOT strip query params — Discogs CDN needs them
+    if(chosen?.uri && chosen.uri.startsWith('http')) return chosen.uri;
+
+    return null;
+  }catch(e){
+    console.warn('Discogs error:', e?.message || e);
+    return null;
+  }
+}
+
+// ── Tier 1: Wikipedia – 강화된 검색 힌트 ────────
+// Uses generator=search so Wikipedia's own search engine finds the page.
+// This handles: redirects, disambiguation, alternate romanizations,
+// and non-Latin scripts that don't match page titles exactly.
+function detectScript(name){
+  if(/[가-힣ᄀ-ᇿ㄰-㆏]/.test(name)) return 'ko';
+  if(/[぀-ゟ゠-ヿ]/.test(name)) return 'ja';
+  if(/[一-鿿]/.test(name)) return 'cjk';
+  return 'en';
+}
+
+// One-shot: search AND get pageimages in a single call using generator=search
+async function wikiSearchImg(lang, query, extraHint=''){
+  try{
+    const q = extraHint ? `${query} ${extraHint}` : query;
+    const url = `https://${lang}.wikipedia.org/w/api.php?`
+      + `action=query&generator=search&gsrsearch=${encodeURIComponent(q)}&gsrlimit=5`
+      + `&prop=pageimages&pithumbsize=700&pilimit=5`
+      + `&format=json&origin=*`;
+    const r = await fetch(url, {signal: AbortSignal.timeout(5500)});
+    if(!r.ok) return null;
+    const d = await r.json();
+    const pages = Object.values(d?.query?.pages || {});
+    if(!pages.length) return null;
+    // Sort by search index (gsrindex), pick first one with a valid thumbnail
+    pages.sort((a,b) => (a.index||99) - (b.index||99));
+    for(const page of pages){
+      if(page.thumbnail?.source){
+        const src = page.thumbnail.source.toLowerCase();
+        if(!src.includes('logo')&&!src.includes('flag')&&!src.includes('map')
+           &&!src.includes('icon')&&!src.includes('emblem')&&!src.includes('symbol')
+           &&!src.includes('silhouette')&&!src.includes('default')){
+          return page.thumbnail.source;
+        }
+      }
+    }
+    return null;
+  }catch(e){ return null; }
+}
+
+async function wiki_artistImg(name){
+  const script = detectScript(name);
+
+  if(script === 'ko'){
+    // 한국어: ko.wikipedia 우선, 다양한 힌트 시도
+    return (
+      await wikiSearchImg('ko', name, '가수') ||
+      await wikiSearchImg('ko', name, '음악 그룹') ||
+      await wikiSearchImg('ko', name, '밴드') ||
+      await wikiSearchImg('ko', name, '음악') ||
+      await wikiSearchImg('ko', name) ||
+      await wikiSearchImg('en', name, 'South Korean singer') ||
+      await wikiSearchImg('en', name, 'K-pop group') ||
+      await wikiSearchImg('en', name, 'Korean singer') ||
+      await wikiSearchImg('en', name, 'K-pop') ||
+      null
+    );
+  }
+
+  if(script === 'ja' || script === 'cjk'){
+    // 일본어/CJK
+    return (
+      await wikiSearchImg('ja', name, '歌手') ||
+      await wikiSearchImg('ja', name, '音楽グループ') ||
+      await wikiSearchImg('ja', name, '音楽') ||
+      await wikiSearchImg('ja', name) ||
+      await wikiSearchImg('en', name, 'Japanese singer') ||
+      await wikiSearchImg('en', name, 'singer') ||
+      null
+    );
+  }
+
+  // 영어/라틴 계열: 다양한 장르 힌트 추가
+  return (
+    await wikiSearchImg('en', name, 'singer') ||
+    await wikiSearchImg('en', name, 'band music') ||
+    await wikiSearchImg('en', name, 'rapper hip hop') ||
+    await wikiSearchImg('en', name, 'musician') ||
+    await wikiSearchImg('en', name, 'rock band') ||
+    await wikiSearchImg('en', name, 'DJ producer') ||
+    await wikiSearchImg('en', name) ||
+    null
+  );
+}
+
+// ── Tier 2: TheAudioDB ───────────────────────────
+async function tadb_artistImg(name){
+  try{
+    const r=await fetch(`https://www.theaudiodb.com/api/v1/json/2/search.php?s=${encodeURIComponent(name)}`,{signal:AbortSignal.timeout(6000)});
+    if(!r.ok) return null;
+    const d=await r.json();
+    const list=d?.artists||[];
+    if(!list.length) return null;
+    let best=list[0],bs=-1;
+    for(const a of list){ const s=matchScore(name,a.strArtist||''); if(s>bs){bs=s;best=a;} }
+    return best?.strArtistThumb||best?.strArtistFanart||null;
+  }catch(e){ return null; }
+}
+
+// ── Tier 3: Deezer JSONP ─────────────────────────
+let _dzSeq=0;
+function dz_artistImg(name){
+  return new Promise(resolve=>{
+    const cb=`_dzA${++_dzSeq}`;
+    let sc;
+    const to=setTimeout(()=>{ delete window[cb]; resolve(null); },7000);
+    window[cb]=data=>{
+      clearTimeout(to); delete window[cb];
+      try{sc?.remove();}catch(e){}
+      const list=data?.data||[];
+      if(!list.length) return resolve(null);
+      let best=list[0],bs=-1;
+      for(const a of list){ const s=matchScore(name,a.name||''); if(s>bs){bs=s;best=a;} }
+      resolve(best?.picture_xl||best?.picture_big||best?.picture_medium||null);
+    };
+    sc=document.createElement('script');
+    sc.src=`https://api.deezer.com/search/artist?q=${encodeURIComponent(name)}&limit=5&output=jsonp&callback=${cb}`;
+    sc.onerror=()=>{ clearTimeout(to); delete window[cb]; resolve(null); };
+    document.head.appendChild(sc);
+  });
+}
+
+// ── Cascading fetch (token 있으면 Discogs 우선) ──
+async function getArtistImg(name, discogsToken){
+  // Tier 0: Discogs (토큰 있을 때만)
+  if(discogsToken){
+    const img0 = await discogs_artistImg(discogsToken, name);
+    if(img0) return img0;
+  }
+  // Tier 1: Wikipedia (강화된 힌트)
+  const img1 = await wiki_artistImg(name);
+  if(img1) return img1;
+  // Tier 2: TheAudioDB
+  const img2 = await tadb_artistImg(name);
+  if(img2) return img2;
+  // Tier 3: Deezer JSONP
+  return await dz_artistImg(name);
+}
+
+async function fetchAllArtistImgs(names, discogsToken, onProgress){
+  const out = new Array(names.length).fill(null);
+  // Discogs 2-step call = 2 API calls per artist.
+  // Rate limit: 60 req/min with token → safe with batch=2, delay=500ms
+  // (~2*2/0.5 = 8 req/sec → 480/min — still under but cautious: batch=2 = 4 req/0.5s = OK)
+  // Without token: batch=4, delay=100ms (Wikipedia/TADB/Deezer are lenient)
+  const BATCH = discogsToken ? 2 : 4;
+  const DELAY = discogsToken ? 500 : 100;
+  for(let i=0;i<names.length;i+=BATCH){
+    const res=await Promise.all(names.slice(i,i+BATCH).map(n=>getArtistImg(n, discogsToken)));
+    res.forEach((r,j)=>{ out[i+j]=r; });
+    onProgress(Math.min(i+BATCH,names.length));
+    if(i+BATCH<names.length) await delay(DELAY);
+  }
+  return out;
+}
+
+// ═══════════════════════════════════════════════════
+// ITUNES JSONP – Track Album Art
+// ═══════════════════════════════════════════════════
+let _itSeq=0;
+function itunesTrackArt(artistName,trackName){
+  return new Promise(resolve=>{
+    const cb=`_itT${++_itSeq}`;
+    let sc;
+    const to=setTimeout(()=>{ delete window[cb]; resolve(null); },8000);
+    window[cb]=data=>{
+      clearTimeout(to); delete window[cb];
+      try{sc?.remove();}catch(e){}
+      const results=(data?.results||[]).filter(r=>r.wrapperType==='track'||r.kind==='song');
+      if(!results.length) return resolve(null);
+      let best=null,bs=-1;
+      for(const r of results){
+        const score=matchScore(trackName,r.trackName||'')*2+matchScore(artistName,r.artistName||'');
+        if(score>bs){bs=score;best=r;}
+      }
+      if(!best?.artworkUrl100) return resolve(null);
+      resolve(best.artworkUrl100.replace(/\/\d+x\d+bb\./,'/600x600bb.').replace(/\/\d+x\d+-\d+\./,'/600x600-999.'));
+    };
+    sc=document.createElement('script');
+    sc.src=`https://itunes.apple.com/search?term=${encodeURIComponent(artistName+' '+trackName)}&entity=song&limit=10&callback=${cb}`;
+    sc.onerror=()=>{ clearTimeout(to); delete window[cb]; resolve(null); };
+    document.head.appendChild(sc);
+  });
+}
+async function itunesFetchAll(items,onProgress){
+  const out=new Array(items.length).fill(null);
+  const BATCH=4;
+  for(let i=0;i<items.length;i+=BATCH){
+    const res=await Promise.all(items.slice(i,i+BATCH).map(item=>itunesTrackArt(item._labels.artist||'',item._labels.track||item.name||'')));
+    res.forEach((r,j)=>{ out[i+j]=r; });
+    onProgress(Math.min(i+BATCH,items.length));
+    if(i+BATCH<items.length) await delay(200);
+  }
+  return out;
+}
+
+// ═══════════════════════════════════════════════════
+// IMAGE LOAD
+// crossOrigin='anonymous' needed for canvas.toDataURL().
+// If server sends no CORS header, onerror fires → retry without crossOrigin.
+// Tainted images display correctly but toDataURL() will throw — handled below.
+// ═══════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
+// 이미지 로드 전략
+//  · CORS 지원 CDN (Wikipedia, iTunes, Deezer 등):
+//      crossOrigin='anonymous' → canvas에 써도 toDataURL() 가능
+//  · CORS 미지원 CDN (Discogs: i.discogs.com 등):
+//      crossOrigin 속성 없이 로드 → 화면에는 표시되나 canvas tainted
+//      tainted 상태에서 toDataURL()는 SecurityError → 다운로드 경고 표시
+// ───────────────────────────────────────────────────
+// 브라우저 캐시 충돌 방지:
+//  crossOrigin='anonymous'로 CORS 실패한 응답이 캐시에 남으면,
+//  같은 URL을 allowTaint=true로 재시도해도 캐시된 실패 응답을 재사용.
+//  → Discogs CDN은 처음부터 crossOrigin 없이 로드해 캐시 오염을 방지.
+// ═══════════════════════════════════════════════════
+
+let _canvasTainted = false;
+
+// Known CDNs that don't set Access-Control-Allow-Origin
+const NO_CORS_HOSTS = /\.discogs\.com|discogs\.com\/image/i;
+
+function loadImg(url){
+  if(!url) return Promise.resolve(null);
+  // Strip internal markers (e.g. #_discogs)
+  const cleanUrl = url.replace(/#.*$/, '');
+  if(NO_CORS_HOSTS.test(cleanUrl)){
+    // Skip crossOrigin entirely for Discogs CDN: no cache-poisoning risk
+    return _loadNoCors(cleanUrl);
+  }
+  return _loadCors(cleanUrl);
+}
+
+function _loadCors(url){
+  return new Promise(resolve=>{
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    const to = setTimeout(()=>{
+      img.onload = img.onerror = null;
+      // Timeout with crossOrigin → try cache-busted no-cors
+      _loadNoCors(url + (url.includes('?') ? '&' : '?') + '_nc=' + Date.now()).then(resolve);
+    }, 8000);
+    img.onload  = ()=>{ clearTimeout(to); resolve(img); };
+    img.onerror = ()=>{
+      clearTimeout(to);
+      // CORS error → retry without crossOrigin + cache-bust to avoid browser cache reuse
+      const bustUrl = url + (url.includes('?') ? '&' : '?') + '_nc=' + Date.now();
+      _loadNoCors(bustUrl).then(resolve);
+    };
+    img.src = url;
+  });
+}
+
+function _loadNoCors(url){
+  return new Promise(resolve=>{
+    const img = new Image();
+    // NO crossOrigin: canvas will be tainted but image displays fine
+    const to = setTimeout(()=>resolve(null), 8000);
+    img.onload  = ()=>{ clearTimeout(to); _canvasTainted=true; img._tainted=true; resolve(img); };
+    img.onerror = ()=>{ clearTimeout(to); resolve(null); };
+    img.src = url;
+  });
+}
+function delay(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+// ═══════════════════════════════════════════════════
+// IMAGE SWAP – 타일 클릭으로 이미지 직접 교체
+// ═══════════════════════════════════════════════════
+let _swapIdx = -1;
+let _swapPendingImg = null;
+let _origImgs = [];   // 원본 백업 (복원용)
+
+function onCanvasClick(e){
+  if(!hasGenerated||!cachedItems||isGenerating) return;
+  const canvas = document.getElementById('collageCanvas');
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const cx = (e.clientX - rect.left) * scaleX;
+  const cy = (e.clientY - rect.top)  * scaleY;
+
+  const title = (document.getElementById('collageTitle').value||'').trim();
+  const TH = title ? 72 : 0;
+  const n = state.grid, C = n===3 ? 900 : 1000;
+  const {tiles} = {clean:layoutClean,featured:layoutFeatured,masonry:layoutMasonry}[state.layout](n,C);
+
+  let hit = -1;
+  for(let i=0;i<tiles.length&&i<cachedItems.length;i++){
+    const t = tiles[i];
+    if(cx>=t.x && cx<=t.x+t.w && cy>=t.y+TH && cy<=t.y+TH+t.h){ hit=i; break; }
+  }
+  if(hit < 0) return;
+  openImgModal(hit);
+}
+
+function openImgModal(idx){
+  _swapIdx = idx;
+  _swapPendingImg = null;
+  const item = cachedItems[idx];
+  const name = item._labels?.artist||item._labels?.album||item._labels?.track||`#${idx+1}`;
+  document.getElementById('imgModalArtistName').textContent = name;
+  document.getElementById('imgApplyBtn').disabled = true;
+
+  // 현재 이미지 미리보기
+  const prevImg  = document.getElementById('imgModalPreviewImg');
+  const prevIcon = document.getElementById('imgModalPreviewIcon');
+  if(item._img){
+    try{
+      const tmp = document.createElement('canvas');
+      tmp.width = item._img.width; tmp.height = item._img.height;
+      tmp.getContext('2d').drawImage(item._img,0,0);
+      prevImg.src = tmp.toDataURL();
+    }catch(e){ prevImg.src = item._img.src||''; }
+    prevImg.style.display='block'; prevIcon.style.display='none';
+  } else {
+    prevImg.style.display='none'; prevIcon.style.display='block';
+  }
+
+  document.getElementById('imgResetBtn').style.display = _origImgs[idx]!==undefined ? 'block' : 'none';
+  switchImgTab('file');
+  document.getElementById('imgUrlInput').value='';
+  document.getElementById('imgFileInput').value='';
+  document.getElementById('imgModalOverlay').classList.add('open');
+}
+
+function closeImgModal(){
+  document.getElementById('imgModalOverlay').classList.remove('open');
+  _swapPendingImg=null; _swapIdx=-1;
+}
+
+function switchImgTab(tab){
+  document.getElementById('tabFile').classList.toggle('active', tab==='file');
+  document.getElementById('tabUrl').classList.toggle('active',  tab==='url');
+  document.getElementById('imgTabFileContent').style.display = tab==='file' ? '' : 'none';
+  document.getElementById('imgTabUrlContent').style.display  = tab==='url'  ? '' : 'none';
+  _swapPendingImg = null;
+  document.getElementById('imgApplyBtn').disabled = true;
+}
+
+function onImgFileSelected(e){
+  const file = e.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ev=>{
+    const img = new Image();
+    img.onload = ()=>{
+      _swapPendingImg = img;
+      document.getElementById('imgModalPreviewImg').src = ev.target.result;
+      document.getElementById('imgModalPreviewImg').style.display='block';
+      document.getElementById('imgModalPreviewIcon').style.display='none';
+      document.getElementById('imgApplyBtn').disabled = false;
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function onImgUrlInput(url){
+  _swapPendingImg = null;
+  document.getElementById('imgApplyBtn').disabled = true;
+  if(!url.startsWith('http')) return;
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = ()=>{
+    _swapPendingImg = img;
+    document.getElementById('imgModalPreviewImg').src = url;
+    document.getElementById('imgModalPreviewImg').style.display='block';
+    document.getElementById('imgModalPreviewIcon').style.display='none';
+    document.getElementById('imgApplyBtn').disabled = false;
+  };
+  img.onerror = ()=>{
+    const img2 = new Image();
+    img2.onload = ()=>{
+      img2._tainted = true; _swapPendingImg = img2;
+      document.getElementById('imgModalPreviewImg').src = url;
+      document.getElementById('imgModalPreviewImg').style.display='block';
+      document.getElementById('imgModalPreviewIcon').style.display='none';
+      document.getElementById('imgApplyBtn').disabled = false;
+    };
+    img2.onerror = ()=>{ document.getElementById('imgApplyBtn').disabled=true; };
+    img2.src = url + (url.includes('?')?'&':'?') + '_nc='+Date.now();
+  };
+  img.src = url;
+}
+
+function applyImgSwap(){
+  if(!_swapPendingImg||_swapIdx<0||!cachedItems) return;
+  if(_origImgs[_swapIdx]===undefined) _origImgs[_swapIdx] = cachedItems[_swapIdx]._img;
+  cachedItems[_swapIdx]._img = _swapPendingImg;
+  if(_swapPendingImg._tainted) _canvasTainted = true;
+  closeImgModal();
+  rerenderCanvas();
+}
+
+function resetImgSwap(){
+  if(_swapIdx<0||!cachedItems||_origImgs[_swapIdx]===undefined) return;
+  cachedItems[_swapIdx]._img = _origImgs[_swapIdx];
+  delete _origImgs[_swapIdx];
+  closeImgModal();
+  rerenderCanvas();
+}
+
+// 이벤트 등록
+document.getElementById('collageCanvas').addEventListener('click', onCanvasClick);
+document.getElementById('canvasWrapper').addEventListener('mouseenter',()=>{
+  if(hasGenerated) document.getElementById('canvasEditHint').classList.add('show');
+});
+document.getElementById('canvasWrapper').addEventListener('mouseleave',()=>{
+  document.getElementById('canvasEditHint').classList.remove('show');
+});
+document.getElementById('imgModalOverlay').addEventListener('click', e=>{
+  if(e.target===document.getElementById('imgModalOverlay')) closeImgModal();
+});
+
+// ═══════════════════════════════════════════════════
+// PLACEHOLDER
+// ═══════════════════════════════════════════════════
+const PALETTE=[
+  ['#1a0533','#6e2fa0'],['#0a1f3c','#1e5fa8'],['#0d2b1f','#1a7a4a'],
+  ['#2d0d0d','#8b1a1a'],['#1a1a0a','#7a6a10'],['#0d1a2d','#1a4a8b'],
+  ['#2d0d22','#8b1a6a'],['#0d2d2d','#1a7a7a'],['#1f0d2d','#6a1a8b'],
+  ['#2d1a0d','#8b4a1a']
+];
+function hash(s){let h=0;for(let i=0;i<s.length;i++)h=(Math.imul(31,h)+s.charCodeAt(i))|0;return Math.abs(h);}
+function pcolors(name){return PALETTE[hash(name||'?')%PALETTE.length];}
+
+// ═══════════════════════════════════════════════════
+// LAYOUTS
+// ═══════════════════════════════════════════════════
+function layoutClean(n,C){
+  const s=C/n;
+  return{tiles:Array.from({length:n*n},(_,i)=>({x:(i%n)*s,y:Math.floor(i/n)*s,w:s,h:s})),W:C,H:C};
+}
+function layoutFeatured(n,C){
+  const t=[];
+  if(n===3){
+    const F=C*2/3,S=C/3,bW=C/6;
+    t.push({x:0,y:0,w:F,h:F});
+    t.push({x:F,y:0,w:S,h:S}); t.push({x:F,y:S,w:S,h:S});
+    for(let i=0;i<6;i++) t.push({x:i*bW,y:F,w:bW,h:bW});
+    return{tiles:t,W:C,H:F+bW};
+  }else{
+    const F=600,sW=(C-F)/2,sH=F/3;
+    t.push({x:0,y:0,w:F,h:F});
+    for(let r=0;r<3;r++) for(let c=0;c<2;c++) t.push({x:F+c*sW,y:r*sH,w:sW,h:sH});
+    const bW=C/9;
+    for(let r=0;r<2;r++) for(let c=0;c<9;c++) t.push({x:c*bW,y:F+r*bW,w:bW,h:bW});
+    return{tiles:t,W:C,H:F+bW*2};
+  }
+}
+function layoutMasonry(n,C){
+  const cW=C/n,cH=new Array(n).fill(0),t=[];
+  const R=[1.25,0.8,1.45,0.9,1.1,1.35,0.75,1.05,1.3,0.85,1.15,0.95,1.4,0.7,1.2];
+  for(let i=0;i<n*n;i++){
+    const col=cH.indexOf(Math.min(...cH));
+    const h=Math.round(cW*R[i%R.length]);
+    t.push({x:col*cW,y:cH[col],w:cW,h});
+    cH[col]+=h;
+  }
+  return{tiles:t,W:C,H:Math.max(...cH)};
+}
+
+// ═══════════════════════════════════════════════════
+// CANVAS DRAW
+// ═══════════════════════════════════════════════════
+const GAP=3;
+
+function drawTile(ctx,tile,item,rank,opts){
+  const{x,y,w,h}=tile;
+  const px=x+GAP/2,py=y+GAP/2,pw=w-GAP,ph=h-GAP;
+  if(pw<2||ph<2) return;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(px,py,pw,ph); ctx.clip();
+
+  if(item._img){
+    const im=item._img;
+    const sc=Math.max(pw/im.width,ph/im.height);
+    ctx.drawImage(im,px+(pw-im.width*sc)/2,py+(ph-im.height*sc)/2,im.width*sc,im.height*sc);
+  }else{
+    const name=item._labels.artist||item._labels.album||item._labels.track||'?';
+    const[c1,c2]=pcolors(name);
+    const g=ctx.createLinearGradient(px,py,px+pw,py+ph);
+    g.addColorStop(0,c1); g.addColorStop(1,c2);
+    ctx.fillStyle=g; ctx.fillRect(px,py,pw,ph);
+    const fs=Math.round(Math.min(pw,ph)*.38);
+    ctx.font=`800 ${fs}px Syne,sans-serif`;
+    ctx.fillStyle='rgba(255,255,255,.18)';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText((name[0]||'?').toUpperCase(),px+pw/2,py+ph/2);
+    if(pw>80){
+      const nfs=Math.max(8,Math.min(13,pw/10));
+      ctx.font=`600 ${nfs}px Syne,sans-serif`;
+      ctx.fillStyle='rgba(255,255,255,.28)';
+      let nm=name;
+      while(nm.length>2&&ctx.measureText(nm).width>pw-16) nm=nm.slice(0,-2)+'…';
+      ctx.fillText(nm,px+pw/2,py+ph*.72);
+    }
+  }
+
+  // Vignette
+  const vg=ctx.createRadialGradient(px+pw/2,py+ph/2,Math.min(pw,ph)*.3,px+pw/2,py+ph/2,Math.max(pw,ph)*.8);
+  vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,.28)');
+  ctx.fillStyle=vg; ctx.fillRect(px,py,pw,ph);
+
+  // Info overlay
+  const L=item._labels;
+  const lines=[];
+  if(opts.showRank)             lines.push({t:`#${rank}`,b:true,a:true});
+  if(opts.showArtist&&L.artist) lines.push({t:L.artist,b:true});
+  if(opts.showAlbum&&L.album)   lines.push({t:L.album,b:false});
+  if(opts.showTrack&&L.track)   lines.push({t:L.track,b:false});
+  if(opts.showCount&&L.count)   lines.push({t:`${Number(L.count).toLocaleString()} plays`,b:false,m:true});
+
+  if(lines.length){
+    const fs=Math.max(10,Math.min(16,pw/8));
+    const lh=fs+5, padding=8;
+    const oh=Math.min(ph*.65,padding*2+lines.length*lh+4);
+    const og=ctx.createLinearGradient(px,py+ph-oh,px,py+ph);
+    og.addColorStop(0,'rgba(0,0,0,0)');
+    og.addColorStop(.3,'rgba(0,0,0,.6)');
+    og.addColorStop(1,'rgba(0,0,0,.92)');
+    ctx.fillStyle=og; ctx.fillRect(px,py+ph-oh,pw,oh);
+    ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+    let ty=py+ph-padding;
+    for(let i=lines.length-1;i>=0;i--){
+      const ln=lines[i];
+      ctx.font=`${ln.b?'700':'500'} ${fs}px Syne,sans-serif`;
+      ctx.shadowColor='rgba(0,0,0,.95)'; ctx.shadowBlur=6; ctx.shadowOffsetX=1; ctx.shadowOffsetY=1;
+      ctx.fillStyle=ln.a?'#ff5577':ln.m?'rgba(255,255,255,.60)':'rgba(255,255,255,1)';
+      let txt=ln.t;
+      while(txt.length>2&&ctx.measureText(txt).width>pw-padding*2) txt=txt.slice(0,-2)+'…';
+      ctx.fillText(txt,px+padding,ty);
+      ty-=lh;
+    }
+    ctx.shadowColor='transparent'; ctx.shadowBlur=0; ctx.shadowOffsetX=0; ctx.shadowOffsetY=0;
+  }
+
+  // #1 badge
+  if(rank===1&&opts.isFeatured){
+    ctx.shadowColor='transparent'; ctx.shadowBlur=0;
+    ctx.fillStyle='#e8325a'; ctx.fillRect(px,py,32,22);
+    ctx.font='800 11px Syne,sans-serif';
+    ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('#1',px+16,py+11);
+  }
+  ctx.restore();
+}
+
+function drawTitleBar(ctx, title, W, TH, un, period, showUsername){
+  // Dark gradient background for title bar
+  const bg=ctx.createLinearGradient(0,0,W,TH);
+  bg.addColorStop(0,'#0b0d1a'); bg.addColorStop(1,'#141727');
+  ctx.fillStyle=bg; ctx.fillRect(0,0,W,TH);
+
+  // Accent left stripe
+  ctx.fillStyle='#e8325a'; ctx.fillRect(0,0,4,TH);
+
+  // Title text
+  const fs=Math.min(Math.round(TH*0.48),36);
+  ctx.font=`800 ${fs}px Syne,sans-serif`;
+  ctx.textBaseline='middle'; ctx.textAlign='left';
+  ctx.shadowColor='rgba(0,0,0,.5)'; ctx.shadowBlur=8; ctx.shadowOffsetX=0; ctx.shadowOffsetY=2;
+
+  // Truncate title if too wide
+  let txt=title;
+  while(txt.length>2 && ctx.measureText(txt).width > W-200) txt=txt.slice(0,-2)+'…';
+  ctx.fillStyle='#ffffff'; ctx.fillText(txt, 20, TH/2);
+
+  // Right side: last.fm 표기 (계정명 표시 여부에 따라)
+  ctx.shadowColor='transparent'; ctx.shadowBlur=0; ctx.shadowOffsetX=0; ctx.shadowOffsetY=0;
+  const sitePart = showUsername && un ? `last.fm/${un}` : 'last.fm';
+  const sub = `${sitePart}  ·  ${pLabel(period)}`;
+  const sfs=Math.max(10,Math.round(TH*0.18));
+  ctx.font=`400 ${sfs}px DM Mono,monospace`;
+  ctx.fillStyle='rgba(255,255,255,0.35)';
+  ctx.textAlign='right';
+  ctx.fillText(sub, W-16, TH/2);
+
+  // Thin separator line at bottom
+  ctx.fillStyle='rgba(255,255,255,0.07)';
+  ctx.fillRect(0, TH-1, W, 1);
+}
+
+function doRender(items){
+  _canvasTainted = false;  // reset taint tracking for this render
+  const n=state.grid,C=n===3?900:1000;
+  const{tiles,W,H}={clean:layoutClean,featured:layoutFeatured,masonry:layoutMasonry}[state.layout](n,C);
+  const title=(document.getElementById('collageTitle').value||'').trim();
+  const TH=title?72:0;  // title bar height
+  const un=document.getElementById('username').value.trim();
+  const showUsername = document.getElementById('showUsername')?.checked ?? false;
+
+  const canvas=document.getElementById('collageCanvas');
+  canvas.width=W; canvas.height=H+TH;
+  const ctx=canvas.getContext('2d');
+  ctx.fillStyle='#12152a'; ctx.fillRect(0,0,W,H+TH);
+
+  // Draw title bar at top
+  if(title) drawTitleBar(ctx,title,W,TH,un,state.period,showUsername);
+
+  // Draw tiles (shifted down by TH)
+  const opts={showArtist:state.showArtist,showAlbum:state.showAlbum,showTrack:state.showTrack,showCount:state.showCount,showRank:state.showRank,isFeatured:state.layout==='featured'};
+  const count=Math.min(items.length,tiles.length);
+  for(let i=0;i<count;i++){
+    const tile={...tiles[i], y:tiles[i].y+TH};
+    drawTile(ctx,tile,items[i],i+1,opts);
+  }
+
+  // Watermark at bottom-right (only when no title)
+  if(!title){
+    ctx.font='400 10px Syne,sans-serif';
+    ctx.fillStyle='rgba(255,255,255,.2)';
+    ctx.textAlign='right'; ctx.textBaseline='bottom';
+    const sitePart = showUsername && un ? `last.fm/${un}` : 'last.fm';
+    ctx.fillText(`${sitePart} · ${pLabel(state.period)}`,W-8,H+TH-6);
+  }
+}
+function rerenderCanvas(){ if(cachedItems&&hasGenerated) doRender(cachedItems); }
+
+// ═══════════════════════════════════════════════════
+// GENERATE
+// ═══════════════════════════════════════════════════
+async function generateCollage(){
+  if(isGenerating) return;
+  const apiKey=document.getElementById('apiKey').value.trim();
+  const username=document.getElementById('username').value.trim();
+  if(!apiKey)   return showErr('API Key를 입력해주세요');
+  if(!username) return showErr('Username을 입력해주세요');
+  clearErr();
+  isGenerating=true;
+  document.getElementById('emptyState').style.display='none';
+  document.getElementById('canvasWrapper').style.display='block';
+  document.getElementById('loadingOverlay').style.display='flex';
+  document.getElementById('generateBtn').disabled=true;
+  document.getElementById('downloadBtn').disabled=true;
+  setStatus('busy','생성 중...');
+  setLoading('Last.fm 스크로블 데이터 가져오는 중...','',5);
+
+  try{
+    const n=state.grid,total=n*n;
+    const items=await lfmFetchTop(apiKey,username,state.type,state.period,total);
+    if(!items.length) throw new Error('해당 기간에 스크로블 데이터가 없습니다');
+    items.forEach(item=>{ item._labels=getLabels(item,state.type); item._img=null; });
+
+    if(state.type==='artist'){
+      const discogsToken = document.getElementById('discogsToken').value.trim();
+      const srcLabel = discogsToken ? 'Discogs→Wiki→TADB→Deezer' : 'Wikipedia→TADB→Deezer';
+      setLoading(`아티스트 사진 검색 중 (${srcLabel})...`,`0 / ${items.length}`,10);
+      const urls=await fetchAllArtistImgs(items.map(i=>i.name), discogsToken, done=>{
+        setLoading('아티스트 이미지 검색 중...',`${done} / ${items.length}`,10+Math.round(done/items.length*45));
+      });
+      let d=0;
+      await Promise.all(urls.map(async(url,i)=>{
+        items[i]._img=await loadImg(url);
+        setLoading('이미지 로딩 중...',`${++d} / ${items.length}`,55+Math.round(d/items.length*33));
+      }));
+
+    }else if(state.type==='album'){
+      let d=0;
+      setLoading('Last.fm 앨범 이미지 로딩 중...',`0 / ${items.length}`,10);
+      await Promise.all(items.map(async item=>{
+        item._img=await loadImg(lfmImageUrl(item));
+        setLoading('이미지 로딩 중...',`${++d} / ${items.length}`,10+Math.round(d/items.length*78));
+      }));
+
+    }else{
+      setLoading('iTunes 앨범아트 검색 중...',`0 / ${items.length}`,10);
+      const itunesUrls=await itunesFetchAll(items,done=>{
+        setLoading('iTunes 앨범아트 검색 중...',`${done} / ${items.length}`,10+Math.round(done/items.length*45));
+      });
+      let d=0;
+      await Promise.all(itunesUrls.map(async(itunesUrl,i)=>{
+        items[i]._img=await loadImg(itunesUrl||lfmImageUrl(items[i]));
+        setLoading('이미지 로딩 중...',`${++d} / ${items.length}`,55+Math.round(d/items.length*33));
+      }));
+    }
+
+    setLoading('콜라쥬 렌더링 중...','',92);
+    cachedItems=items;
+    _origImgs=[];   // 새 generate 시 교체 이력 초기화
+    doRender(items);
+    document.getElementById('collageCanvas').classList.add('editable');
+    document.getElementById('downloadBtn').disabled=false;
+    hasGenerated=true;
+    document.getElementById('autoIndicator').classList.add('on');
+    // 렌더 완료 후 tainted 상태 확인 (Discogs 이미지)
+    if(_canvasTainted){
+      setStatus('ok',`완료 · ${items.length}개 ${state.type} · ${n}×${n} ${state.layout} · ⚠ 우클릭 저장 권장`);
+      document.getElementById('downloadBtn').textContent = '↓  SAVE (우클릭 권장)';
+      document.getElementById('downloadBtn').title = 'Discogs 이미지 CORS 제한으로 직접 다운로드가 안 될 수 있습니다. 우클릭 → 이미지 저장을 이용하세요.';
+    } else {
+      setStatus('ok',`완료 · ${items.length}개 ${state.type} · ${n}×${n} ${state.layout}`);
+      document.getElementById('downloadBtn').textContent = '↓  DOWNLOAD PNG';
+      document.getElementById('downloadBtn').title = '';
+    }
+
+  }catch(err){
+    showErr(err.message);
+    setStatus('err','오류: '+err.message);
+    if(!hasGenerated){
+      document.getElementById('emptyState').style.display='block';
+      document.getElementById('canvasWrapper').style.display='none';
+    }
+  }finally{
+    document.getElementById('loadingOverlay').style.display='none';
+    document.getElementById('generateBtn').disabled=false;
+    isGenerating=false;
+  }
+}
+
+function downloadCollage(){
+  const canvas=document.getElementById('collageCanvas');
+  const un=document.getElementById('username').value.trim()||'lastfm';
+  try{
+    const a=document.createElement('a');
+    a.download=`collage-${un}-${state.type}-${state.period}-${state.grid}x${state.grid}.png`;
+    a.href=canvas.toDataURL('image/png');
+    a.click();
+  }catch(e){
+    // Canvas tainted (Discogs CDN은 CORS 미지원 → toDataURL 차단)
+    // 우클릭 → 이미지를 다른 이름으로 저장 사용 안내
+    showErr('⚠ Discogs 이미지 CORS 제한으로 직접 다운로드가 차단됐습니다.\n캔버스 위에서 우클릭 → [이미지를 다른 이름으로 저장]을 이용해 주세요.');
+    // Highlight the canvas so user knows where to right-click
+    const cw=document.getElementById('canvasWrapper');
+    cw.style.outline='3px solid #e8325a';
+    setTimeout(()=>{ cw.style.outline=''; },3000);
+  }
+}
+
+function pLabel(p){
+  return{overall:'전체','12month':'1년','6month':'6개월','3month':'3개월','1month':'1달','7day':'1주일'}[p]||p;
+}
+document.addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&(e.target.id==='apiKey'||e.target.id==='username')) generateCollage();
+});
+</script>
+</body>
+</html>
