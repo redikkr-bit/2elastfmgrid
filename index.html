@@ -414,24 +414,20 @@ header{height:46px;display:flex;align-items:center;gap:11px;padding:0 18px;borde
     <!-- sidebar-inner: scrolls when all accordions open -->
     <div class="sidebar-inner">
 
-      <!-- ① 연결 (기본 열림) -->
+      <!-- ① Username 입력 (API 키는 Worker에서 관리) -->
       <div class="acc" id="acc-connect">
         <div class="acc-header open" onclick="toggleAcc('connect')">
-          <span class="acc-icon">🔑</span>
-          <span class="acc-title">연결</span>
+          <span class="acc-icon">👤</span>
+          <span class="acc-title">사용자</span>
           <span class="acc-val" id="acc-connect-val"></span>
           <span class="acc-arrow">▼</span>
         </div>
         <div class="acc-body open" id="acc-connect-body">
           <div class="section">
-            <div id="cfgBadge" class="cfg-badge" style="display:none"></div>
-            <div class="input-wrap">
-              <span class="input-icon">🔑</span>
-              <input type="password" id="apiKey" class="input-field" placeholder="Last.fm API Key">
-            </div>
+            <input type="hidden" id="apiKey" value="__WORKER__">
             <div class="input-wrap">
               <span class="input-icon">👤</span>
-              <input type="text" id="username" class="input-field" placeholder="Username">
+              <input type="text" id="username" class="input-field" placeholder="Last.fm Username">
             </div>
             <div id="errorMsg" class="error-text" style="display:none"></div>
           </div>
@@ -634,7 +630,7 @@ header{height:46px;display:flex;align-items:center;gap:11px;padding:0 18px;borde
     <div class="empty-state" id="emptyState">
       <div class="empty-icon">🎧</div>
       <h2>Your Scrobbles,<br>Visualized</h2>
-      <p>Last.fm API 키 + 유저이름 입력 후 GENERATE<br><br>
+      <p>유저이름 입력 후 GENERATE<br><br>
         <span style="font-size:10px;color:var(--muted)">
           🎤 아티스트 사진 → Discogs(선택) → Wikipedia → TADB → Deezer<br>
           💿 앨범 커버 → Last.fm<br>
@@ -793,39 +789,15 @@ setTimeout(()=>{
   applyConfig();  // config.js 값 필드에 반영
 }, 50);
 
-// ── config.js 적용 ───────────────────────────────
-// <head>의 <script src="./config.js">로 로드된 window.CONFIG를 읽어 각 필드에 채움
-// config.js가 없으면 window.CONFIG=null(기본값) → 아무것도 안 함
+// ── config.js 적용 (username 자동 채우기용) ──────
 function applyConfig(){
   const cfg = window.CONFIG;
   if(!cfg || typeof cfg !== 'object') return;
-
-  const loaded = [];
-
-  // Last.fm
-  if(cfg.lastfm_api_key){
-    document.getElementById('apiKey').value = cfg.lastfm_api_key;
-    loaded.push('Last.fm Key');
-  }
   if(cfg.lastfm_username){
     document.getElementById('username').value = cfg.lastfm_username;
-    loaded.push('Username');
   }
-
-  // Discogs (구버전 오타 키 이름도 허용)
   const dTok = cfg.discogs_token || cfg.discogs_tokekn || '';
-  if(dTok){
-    document.getElementById('discogsToken').value = dTok;
-    loaded.push('Discogs');
-  }
-
-  // 로드 결과 배지 표시
-  if(loaded.length){
-    const badge = document.getElementById('cfgBadge');
-    badge.className = 'cfg-badge ok';
-    badge.textContent = '✅ config.js 로드: ' + loaded.join(', ');
-    badge.style.display = 'flex';
-  }
+  if(dTok) document.getElementById('discogsToken').value = dTok;
 }
 // Title input: re-render on every keystroke
 document.getElementById('collageTitle').addEventListener('input', () => { scheduleRerender(); updateTitlePresets(); });
@@ -878,12 +850,28 @@ function clearErr(){ document.getElementById('errorMsg').style.display='none'; }
 // ═══════════════════════════════════════════════════
 // LAST.FM API
 // ═══════════════════════════════════════════════════
-const LFMURL='https://ws.audioscrobbler.com/2.0/';
-async function lfmFetchTop(apiKey,username,type,period,limit){
-  const method={artist:'user.gettopartists',album:'user.gettopalbums',track:'user.gettoptracks'}[type];
-  const r=await fetch(`${LFMURL}?method=${method}&user=${encodeURIComponent(username)}&api_key=${encodeURIComponent(apiKey)}&format=json&period=${period}&limit=${limit}`);
+// ▼▼▼ Cloudflare Worker 프록시 URL — 본인 Worker 주소로 변경 ▼▼▼
+const WORKER_URL = 'https://green-star-9ff0.redikkr.workers.dev/';
+// ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
+// API 키는 Cloudflare Worker 환경변수에 저장되어 있으므로
+// 이 파일(클라이언트)에서는 전송하지 않습니다.
+async function lfmFetchTop(apiKey, username, type, period, limit){
+  const method = {
+    artist: 'user.gettopartists',
+    album:  'user.gettopalbums',
+    track:  'user.gettoptracks'
+  }[type];
+
+  const url = new URL(WORKER_URL);
+  url.searchParams.set('method', method);
+  url.searchParams.set('user',   username);
+  url.searchParams.set('period', period);
+  url.searchParams.set('limit',  String(limit));
+
+  const r = await fetch(url.toString());
   if(!r.ok) throw new Error(`HTTP ${r.status}`);
-  const d=await r.json();
+  const d = await r.json();
   if(d.error) throw new Error(`Last.fm: ${d.message}`);
   if(type==='artist') return d.topartists?.artist||[];
   if(type==='album')  return d.topalbums?.album||[];
@@ -1625,9 +1613,8 @@ function rerenderCanvas(){ if(cachedItems&&hasGenerated) doRender(cachedItems); 
 // ═══════════════════════════════════════════════════
 async function generateCollage(){
   if(isGenerating) return;
-  const apiKey=document.getElementById('apiKey').value.trim();
+  const apiKey = '__WORKER__'; // API 키는 Cloudflare Worker 환경변수에서 관리
   const username=document.getElementById('username').value.trim();
-  if(!apiKey)   return showErr('API Key를 입력해주세요');
   if(!username) return showErr('Username을 입력해주세요');
   clearErr();
   isGenerating=true;
@@ -1734,7 +1721,7 @@ function pLabel(p){
   return{overall:'전체','12month':'1년','6month':'6개월','3month':'3개월','1month':'1달','7day':'1주일'}[p]||p;
 }
 document.addEventListener('keydown',e=>{
-  if(e.key==='Enter'&&(e.target.id==='apiKey'||e.target.id==='username')) generateCollage();
+  if(e.key==='Enter'&&e.target.id==='username') generateCollage();
 });
 </script>
 </body>
