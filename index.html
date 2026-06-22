@@ -56,19 +56,6 @@ header{height:46px;display:flex;align-items:center;gap:11px;padding:0 18px;borde
   overflow:hidden;
   background:var(--panel);
 }
-/* sidebar-inner scrolls when accordions expand beyond viewport */
-.sidebar-inner{
-  padding:0;
-  display:flex;flex-direction:column;
-  flex:1;
-  min-height:0;          /* ← critical: lets flex child shrink below content height */
-  overflow-y:auto;       /* ← scroll appears when total accordion height > available */
-  overflow-x:hidden;
-  scrollbar-width:thin;
-  scrollbar-color:var(--border2) transparent;
-}
-.sidebar-inner::-webkit-scrollbar{width:3px}
-.sidebar-inner::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
 
 /* Footer always pinned */
 .sidebar-footer{
@@ -80,64 +67,54 @@ header{height:46px;display:flex;align-items:center;gap:11px;padding:0 18px;borde
   background:var(--panel);
 }
 
-/* ── ACCORDION ──────────────────────────────────────────── */
-.acc{
-  display:flex;flex-direction:column;
+/* ── TAB ──────────────────────────────────────────────── */
+.tab-bar{
+  display:flex;
   border-bottom:1px solid var(--border);
-  flex-shrink:0;   /* ← accordion panels don't shrink; sidebar-inner scrolls instead */
+  flex-shrink:0;
+  background:var(--panel);
+  padding:8px 10px 0;
+  gap:4px;
 }
-.acc:first-child{border-top:1px solid var(--border)}
-
-.acc-header{
-  display:flex;align-items:center;gap:7px;
-  padding:8px 12px;
-  cursor:pointer;user-select:none;
-  transition:background .12s;
-  min-height:36px;
-}
-.acc-header:hover{background:var(--card)}
-.acc-header.open{background:var(--card)}
-
-.acc-icon{font-size:12px;flex-shrink:0;width:18px;text-align:center}
-.acc-title{
+.tab-btn{
+  flex:1;padding:6px 4px;
   font-family:'Syne',sans-serif;font-size:9px;font-weight:700;
-  letter-spacing:.16em;text-transform:uppercase;color:var(--text2);flex:1;
+  letter-spacing:.12em;text-transform:uppercase;
+  border:none;background:transparent;
+  color:var(--muted);cursor:pointer;
+  border-bottom:2px solid transparent;
+  transition:color .15s,border-color .15s;
+  border-radius:4px 4px 0 0;
 }
-.acc-badge{font-size:8px;color:var(--green);letter-spacing:.03em;white-space:nowrap;margin-right:2px}
-.acc-val{
-  font-size:9px;color:var(--muted);white-space:nowrap;
-  max-width:90px;overflow:hidden;text-overflow:ellipsis;
-}
-.acc-arrow{
-  font-size:8px;color:var(--muted);flex-shrink:0;
-  transition:transform .2s;display:inline-block;margin-left:4px;
-}
-.acc-header.open .acc-arrow{transform:rotate(180deg)}
+.tab-btn:hover{color:var(--text2)}
+.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent)}
 
-/* acc-body: max-height trick for smooth animation */
-.acc-body{
-  overflow:hidden;
-  max-height:0;
-  transition:max-height .25s ease, padding .2s ease;
-  padding:0 12px;
+.tab-panel{
+  display:none;
+  flex:1;min-height:0;
+  overflow-y:auto;overflow-x:hidden;
+  padding:14px 12px;
+  flex-direction:column;gap:16px;
+  scrollbar-width:thin;
+  scrollbar-color:var(--border2) transparent;
 }
-.acc-body.open{
-  max-height:600px;   /* large enough for any panel content */
-  padding:8px 12px 12px;
-}
+.tab-panel::-webkit-scrollbar{width:3px}
+.tab-panel::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.tab-panel.active{display:flex}
 
-/* legacy helpers used inside acc-body */
+/* ── SECTION INSIDE TAB ───────────────────────────────── */
 .section{display:flex;flex-direction:column;gap:6px}
 .sub-label{
   font-family:'Syne',sans-serif;font-size:8px;font-weight:700;
   letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
   margin-bottom:2px;
 }
+.tab-divider{height:1px;background:var(--border);margin:2px 0}
 .auto-tag{font-size:8px;color:var(--green);letter-spacing:.03em;white-space:nowrap;flex-shrink:0}
 
 /* auto-indicator inside sidebar */
 .auto-indicator{
-  margin:8px 12px 10px;flex-shrink:0;
+  margin:4px 0 0;flex-shrink:0;
 }
 
 /* INPUTS */
@@ -403,7 +380,6 @@ header{height:46px;display:flex;align-items:center;gap:11px;padding:0 18px;borde
     <span class="src-chip sc-wiki">🌐 Artist → Discogs/Wiki</span>
     <span class="src-chip sc-it">🎵 Track → iTunes</span>
   </div>
-  <div class="api-hint">Last.fm 키 없음?&nbsp;<a href="https://www.last.fm/api/account/create" target="_blank">발급 →</a></div>
 </header>
 
 <div class="app-body">
@@ -411,207 +387,181 @@ header{height:46px;display:flex;align-items:center;gap:11px;padding:0 18px;borde
   <!-- ── SIDEBAR ─────────────────────────────────────── -->
   <div class="sidebar">
 
-    <!-- sidebar-inner: scrolls when all accordions open -->
-    <div class="sidebar-inner">
+    <!-- ── 탭 바 ── -->
+    <div class="tab-bar">
+      <button class="tab-btn active" id="tab-content-btn" onclick="switchTab('content')">콘텐츠</button>
+      <button class="tab-btn" id="tab-appear-btn" onclick="switchTab('appear')">꾸미기</button>
+    </div>
 
-      <!-- ① Username 입력 (API 키는 Worker에서 관리) -->
-      <div class="acc" id="acc-connect">
-        <div class="acc-header open" onclick="toggleAcc('connect')">
-          <span class="acc-icon">👤</span>
-          <span class="acc-title">사용자</span>
-          <span class="acc-val" id="acc-connect-val"></span>
-          <span class="acc-arrow">▼</span>
+    <!-- ── 콘텐츠 탭 ── -->
+    <div class="tab-panel active" id="tab-content">
+
+      <!-- Username -->
+      <div class="section">
+        <div class="sub-label">👤 사용자</div>
+        <input type="hidden" id="apiKey" value="__WORKER__">
+        <div class="input-wrap">
+          <span class="input-icon">👤</span>
+          <input type="text" id="username" class="input-field" placeholder="Last.fm Username" autocomplete="off">
         </div>
-        <div class="acc-body open" id="acc-connect-body">
-          <div class="section">
-            <input type="hidden" id="apiKey" value="__WORKER__">
-            <div class="input-wrap">
-              <span class="input-icon">👤</span>
-              <input type="text" id="username" class="input-field" placeholder="Last.fm Username">
-            </div>
-            <div id="errorMsg" class="error-text" style="display:none"></div>
-          </div>
+        <div id="errorMsg" class="error-text" style="display:none"></div>
+      </div>
+
+      <div class="tab-divider"></div>
+
+      <!-- 유형 -->
+      <div class="section">
+        <div class="sub-label">🎛 유형</div>
+        <div class="chip-row" id="typeGroup">
+          <button class="chip active" data-val="artist">🎤 Artist</button>
+          <button class="chip" data-val="album">💿 Album</button>
+          <button class="chip" data-val="track">🎵 Track</button>
+        </div>
+        <div class="info-text" id="typeNote"></div>
+      </div>
+
+      <div class="tab-divider"></div>
+
+      <!-- 기간 -->
+      <div class="section">
+        <div class="sub-label">📅 기간</div>
+        <div class="chip-row" id="periodGroup">
+          <button class="chip active" data-val="overall">전체</button>
+          <button class="chip" data-val="12month">1년</button>
+          <button class="chip" data-val="6month">6개월</button>
+          <button class="chip" data-val="3month">3개월</button>
+          <button class="chip" data-val="1month">1달</button>
+          <button class="chip" data-val="7day">1주일</button>
         </div>
       </div>
 
-      <!-- ② Discogs (아티스트 타입일 때만 display:flex, 기본 닫힘) -->
-      <div class="acc" id="discogsSection">
-        <div class="acc-header open" id="acc-discogs-header" onclick="toggleAcc('discogs')">
-          <span class="acc-icon">🎼</span>
-          <span class="acc-title">Discogs</span>
-          <span class="acc-badge">선택</span>
-          <span class="acc-arrow">▼</span>
-        </div>
-        <div class="acc-body open" id="acc-discogs-body">
-          <div class="section">
-            <div class="input-wrap">
-              <span class="input-icon">🔐</span>
-              <input type="password" id="discogsToken" class="input-field" placeholder="Personal Access Token">
-            </div>
-            <div class="info-text" style="font-size:9px;color:var(--muted);line-height:1.6">
-              입력 시 Discogs에서 아티스트 사진 우선 검색.<br>
-              <strong style="color:var(--text2)">발급:</strong> discogs.com → Settings → Developers → Generate
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ③ 유형 & 기간 (기본 열림) -->
-      <div class="acc" id="acc-type">
-        <div class="acc-header open" onclick="toggleAcc('type')">
-          <span class="acc-icon">🎛</span>
-          <span class="acc-title">유형 &amp; 기간</span>
-          <span class="acc-val" id="acc-type-val">Artist · 전체</span>
-          <span class="acc-arrow">▼</span>
-        </div>
-        <div class="acc-body open" id="acc-type-body">
-          <div class="section">
-            <div class="sub-label">유형</div>
-            <div class="chip-row" id="typeGroup">
-              <button class="chip active" data-val="artist">🎤 Artist</button>
-              <button class="chip" data-val="album">💿 Album</button>
-              <button class="chip" data-val="track">🎵 Track</button>
-            </div>
-            <div class="info-text" id="typeNote"></div>
-            <div class="sub-label" style="margin-top:6px">기간</div>
-            <div class="chip-row" id="periodGroup">
-              <button class="chip active" data-val="overall">전체</button>
-              <button class="chip" data-val="12month">1년</button>
-              <button class="chip" data-val="6month">6개월</button>
-              <button class="chip" data-val="3month">3개월</button>
-              <button class="chip" data-val="1month">1달</button>
-              <button class="chip" data-val="7day">1주일</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ④ 레이아웃 (기본 열림) -->
-      <div class="acc" id="acc-layout">
-        <div class="acc-header open" onclick="toggleAcc('layout')">
-          <span class="acc-icon">⚏</span>
-          <span class="acc-title">레이아웃</span>
-          <span class="acc-badge">⚡즉시</span>
-          <span class="acc-val" id="acc-layout-val">3×3 · Clean</span>
-          <span class="acc-arrow">▼</span>
-        </div>
-        <div class="acc-body open" id="acc-layout-body">
-          <div class="section">
-            <div class="sub-label">그리드</div>
-            <div class="grid-row" id="gridGroup">
-              <button class="grid-btn active" data-val="3">
-                <span class="grid-btn-n">3×3</span>
-                <span class="grid-btn-desc">Top 9</span>
-              </button>
-              <button class="grid-btn" data-val="5">
-                <span class="grid-btn-n">5×5</span>
-                <span class="grid-btn-desc">Top 25</span>
-              </button>
-            </div>
-            <div class="sub-label" style="margin-top:8px">스타일</div>
-            <div class="layout-row" id="layoutGroup">
-              <button class="layout-btn" data-val="featured">
-                <div style="display:grid;grid-template-columns:2fr 1fr;grid-template-rows:2fr 1fr 1fr;gap:2px;width:40px;height:30px">
-                  <div class="lp-cell" style="grid-row:1/3;background:var(--accent);opacity:.8"></div>
-                  <div class="lp-cell"></div><div class="lp-cell"></div>
-                  <div class="lp-cell" style="grid-column:1/3"></div>
-                </div>
-                <span class="layout-btn-label">Featured</span>
-              </button>
-              <button class="layout-btn active" data-val="clean">
-                <div style="display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:2px;width:40px;height:30px">
-                  <div class="lp-cell"></div><div class="lp-cell"></div><div class="lp-cell"></div>
-                  <div class="lp-cell"></div><div class="lp-cell"></div><div class="lp-cell"></div>
-                  <div class="lp-cell"></div><div class="lp-cell"></div><div class="lp-cell"></div>
-                </div>
-                <span class="layout-btn-label">Clean</span>
-              </button>
-              <button class="layout-btn" data-val="masonry">
-                <div style="display:flex;gap:2px;align-items:flex-start;width:40px;height:30px">
-                  <div style="flex:1;display:flex;flex-direction:column;gap:2px">
-                    <div class="lp-cell" style="height:17px"></div><div class="lp-cell" style="height:9px"></div>
-                  </div>
-                  <div style="flex:1;display:flex;flex-direction:column;gap:2px">
-                    <div class="lp-cell" style="height:11px"></div><div class="lp-cell" style="height:15px"></div>
-                  </div>
-                  <div style="flex:1;display:flex;flex-direction:column;gap:2px">
-                    <div class="lp-cell" style="height:19px"></div><div class="lp-cell" style="height:7px"></div>
-                  </div>
-                </div>
-                <span class="layout-btn-label">Masonry</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ⑤ 정보 표시 (기본 닫힘) -->
-      <div class="acc" id="acc-info">
-        <div class="acc-header" onclick="toggleAcc('info')">
-          <span class="acc-icon">🏷</span>
-          <span class="acc-title">정보 표시</span>
-          <span class="acc-badge">⚡즉시</span>
-          <span class="acc-arrow">▼</span>
-        </div>
-        <div class="acc-body" id="acc-info-body">
-          <div class="section">
-            <div class="toggle-row">
-              <span class="toggle-label">아티스트 이름</span>
-              <label class="toggle"><input type="checkbox" id="showArtist" checked><div class="toggle-slider"></div></label>
-            </div>
-            <div class="toggle-row">
-              <span class="toggle-label">앨범 이름</span>
-              <label class="toggle"><input type="checkbox" id="showAlbum"><div class="toggle-slider"></div></label>
-            </div>
-            <div class="toggle-row">
-              <span class="toggle-label">트랙 이름</span>
-              <label class="toggle"><input type="checkbox" id="showTrack"><div class="toggle-slider"></div></label>
-            </div>
-            <div class="toggle-row">
-              <span class="toggle-label">재생 횟수</span>
-              <label class="toggle"><input type="checkbox" id="showCount"><div class="toggle-slider"></div></label>
-            </div>
-            <div class="toggle-row">
-              <span class="toggle-label">순위 번호</span>
-              <label class="toggle"><input type="checkbox" id="showRank"><div class="toggle-slider"></div></label>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ⑥ 타이틀 (기본 닫힘) -->
-      <div class="acc" id="acc-title-sec">
-        <div class="acc-header" onclick="toggleAcc('title-sec')">
-          <span class="acc-icon">✏</span>
-          <span class="acc-title">콜라쥬 타이틀</span>
-          <span class="acc-badge">⚡즉시</span>
-          <span class="acc-arrow">▼</span>
-        </div>
-        <div class="acc-body" id="acc-title-sec-body">
-          <div class="section">
-            <div class="input-wrap">
-              <span class="input-icon">✏</span>
-              <input type="text" id="collageTitle" class="input-field" placeholder="e.g. My Top Artists 2024" maxlength="60">
-            </div>
-            <div class="chip-row" id="titlePresets" style="gap:4px"></div>
-            <div class="toggle-row" style="margin-top:4px">
-              <span class="toggle-label" style="font-size:10px">계정명 표시</span>
-              <label class="toggle"><input type="checkbox" id="showUsername" onchange="state.showUsername=this.checked;scheduleRerender()"><div class="toggle-slider"></div></label>
-            </div>
-            <div style="font-size:9px;color:var(--muted);line-height:1.5">
-              꺼짐: <span style="color:var(--text2)">last.fm · 기간</span><br>
-              켜짐: <span style="color:var(--text2)">last.fm/계정명 · 기간</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- AUTO indicator (항상 표시) -->
+      <!-- AUTO indicator -->
       <div class="auto-indicator" id="autoIndicator">
         <div class="auto-dot"></div>AUTO UPDATE ACTIVE
       </div>
 
-    </div><!-- /sidebar-inner -->
+    </div><!-- /tab-content -->
+
+    <!-- ── 꾸미기 탭 ── -->
+    <div class="tab-panel" id="tab-appear">
+
+      <!-- 그리드 -->
+      <div class="section">
+        <div class="sub-label">⊞ 그리드</div>
+        <div class="grid-row" id="gridGroup">
+          <button class="grid-btn active" data-val="3">
+            <span class="grid-btn-n">3×3</span>
+            <span class="grid-btn-desc">Top 9</span>
+          </button>
+          <button class="grid-btn" data-val="5">
+            <span class="grid-btn-n">5×5</span>
+            <span class="grid-btn-desc">Top 25</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="tab-divider"></div>
+
+      <!-- 스타일 -->
+      <div class="section">
+        <div class="sub-label">🖼 스타일</div>
+        <div class="layout-row" id="layoutGroup">
+          <button class="layout-btn" data-val="featured">
+            <div style="display:grid;grid-template-columns:2fr 1fr;grid-template-rows:2fr 1fr 1fr;gap:2px;width:40px;height:30px">
+              <div class="lp-cell" style="grid-row:1/3;background:var(--accent);opacity:.8"></div>
+              <div class="lp-cell"></div><div class="lp-cell"></div>
+              <div class="lp-cell" style="grid-column:1/3"></div>
+            </div>
+            <span class="layout-btn-label">Featured</span>
+          </button>
+          <button class="layout-btn active" data-val="clean">
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:2px;width:40px;height:30px">
+              <div class="lp-cell"></div><div class="lp-cell"></div><div class="lp-cell"></div>
+              <div class="lp-cell"></div><div class="lp-cell"></div><div class="lp-cell"></div>
+              <div class="lp-cell"></div><div class="lp-cell"></div><div class="lp-cell"></div>
+            </div>
+            <span class="layout-btn-label">Clean</span>
+          </button>
+          <button class="layout-btn" data-val="masonry">
+            <div style="display:flex;gap:2px;align-items:flex-start;width:40px;height:30px">
+              <div style="flex:1;display:flex;flex-direction:column;gap:2px">
+                <div class="lp-cell" style="height:17px"></div><div class="lp-cell" style="height:9px"></div>
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;gap:2px">
+                <div class="lp-cell" style="height:11px"></div><div class="lp-cell" style="height:15px"></div>
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;gap:2px">
+                <div class="lp-cell" style="height:19px"></div><div class="lp-cell" style="height:7px"></div>
+              </div>
+            </div>
+            <span class="layout-btn-label">Masonry</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="tab-divider"></div>
+
+      <!-- 정보 표시 -->
+      <div class="section">
+        <div class="sub-label">🏷 정보 표시 <span class="auto-tag">⚡즉시</span></div>
+        <div class="toggle-row">
+          <span class="toggle-label">아티스트 이름</span>
+          <label class="toggle"><input type="checkbox" id="showArtist" checked><div class="toggle-slider"></div></label>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label">앨범 이름</span>
+          <label class="toggle"><input type="checkbox" id="showAlbum"><div class="toggle-slider"></div></label>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label">트랙 이름</span>
+          <label class="toggle"><input type="checkbox" id="showTrack"><div class="toggle-slider"></div></label>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label">재생 횟수</span>
+          <label class="toggle"><input type="checkbox" id="showCount"><div class="toggle-slider"></div></label>
+        </div>
+        <div class="toggle-row">
+          <span class="toggle-label">순위 번호</span>
+          <label class="toggle"><input type="checkbox" id="showRank"><div class="toggle-slider"></div></label>
+        </div>
+      </div>
+
+      <div class="tab-divider"></div>
+
+      <!-- 콜라주 타이틀 -->
+      <div class="section">
+        <div class="sub-label">✏ 타이틀 <span class="auto-tag">⚡즉시</span></div>
+        <div class="input-wrap">
+          <span class="input-icon">✏</span>
+          <input type="text" id="collageTitle" class="input-field" placeholder="e.g. My Top Artists 2024" maxlength="60">
+        </div>
+        <div class="chip-row" id="titlePresets" style="gap:4px"></div>
+        <div class="toggle-row" style="margin-top:2px">
+          <span class="toggle-label" style="font-size:10px">계정명 표시</span>
+          <label class="toggle"><input type="checkbox" id="showUsername" onchange="state.showUsername=this.checked;scheduleRerender()"><div class="toggle-slider"></div></label>
+        </div>
+        <div style="font-size:9px;color:var(--muted);line-height:1.5">
+          꺼짐: <span style="color:var(--text2)">last.fm · 기간</span><br>
+          켜짐: <span style="color:var(--text2)">last.fm/계정명 · 기간</span>
+        </div>
+      </div>
+
+      <div class="tab-divider"></div>
+
+      <!-- Discogs (아티스트 타입일 때만 표시) -->
+      <div class="section" id="discogsSection" style="display:none">
+        <div class="sub-label">🎼 Discogs <span class="auto-tag">선택</span></div>
+        <div class="input-wrap">
+          <span class="input-icon">🔐</span>
+          <input type="password" id="discogsToken" class="input-field" placeholder="Personal Access Token">
+        </div>
+        <div class="info-text" style="font-size:9px;color:var(--muted);line-height:1.6">
+          입력 시 아티스트 사진 우선 검색.<br>
+          <strong style="color:var(--text2)">발급:</strong> discogs.com → Settings → Developers
+        </div>
+      </div>
+
+    </div><!-- /tab-appear -->
 
     <!-- always visible footer -->
     <div class="sidebar-footer">
@@ -697,44 +647,16 @@ const state = {
 let hasGenerated=false, cachedItems=null, autoTimer=null, isGenerating=false;
 
 // ═══════════════════════════════════════════════════
-// ACCORDION
+// TAB
 // ═══════════════════════════════════════════════════
-// 각 acc id → open 상태 트래킹
-const _accState = {
-  'connect': true,
-  'discogs': true,
-  'type':    true,
-  'layout':  true,
-  'info':    false,
-  'title-sec': false,
-};
-
-function toggleAcc(id){
-  _accState[id] = !_accState[id];
-  _applyAcc(id);
+function switchTab(name){
+  ['content','appear'].forEach(t=>{
+    document.getElementById(`tab-${t}`).classList.toggle('active', t===name);
+    document.getElementById(`tab-${t}-btn`).classList.toggle('active', t===name);
+  });
 }
 
-function _applyAcc(id){
-  // header: #acc-{id} > .acc-header  OR  #acc-discogs-header
-  const el = document.getElementById(`acc-${id}`);
-  if(!el) return;
-  const header = el.querySelector('.acc-header');
-  // body: #acc-{id}-body  (더 명확한 id 선택)
-  const body   = document.getElementById(`acc-${id}-body`);
-  if(!header || !body) return;
-  const open = _accState[id];
-  header.classList.toggle('open', open);
-  body.classList.toggle('open', open);
-}
-
-function updateAccSummary(){
-  const typeMap   = {artist:'Artist', album:'Album', track:'Track'};
-  const periodMap = {overall:'전체','12month':'1년','6month':'6개월','3month':'3개월','1month':'1달','7day':'1주일'};
-  const tv = document.getElementById('acc-type-val');
-  if(tv) tv.textContent = `${typeMap[state.type]||state.type} · ${periodMap[state.period]||state.period}`;
-  const lv = document.getElementById('acc-layout-val');
-  if(lv) lv.textContent = `${state.grid}×${state.grid} · ${state.layout[0].toUpperCase()+state.layout.slice(1)}`;
-}
+function updateAccSummary(){ /* 탭 방식에서는 summary 불필요 */ }
 
 // ═══════════════════════════════════════════════════
 // UI WIRING
@@ -783,10 +705,7 @@ wireToggles(scheduleRerender);
 setTimeout(()=>{
   updateTitlePresets();
   updateTypeNote();
-  // 초기 아코디언 상태 적용 (HTML에 이미 open 클래스 있으나 body id 기반으로 재확인)
-  Object.keys(_accState).forEach(id => _applyAcc(id));
-  updateAccSummary();
-  applyConfig();  // config.js 값 필드에 반영
+  applyConfig();
 }, 50);
 
 // ── config.js 적용 (username 자동 채우기용) ──────
@@ -829,7 +748,7 @@ function updateTypeNote(){
   el.innerHTML=notes[state.type];
   // Discogs 아코디언 패널: 아티스트 타입일 때만 표시
   const ds = document.getElementById('discogsSection');
-  ds.style.display = state.type === 'artist' ? '' : 'none';
+  ds.style.display = state.type === 'artist' ? 'flex' : 'none';
 }
 
 // ═══════════════════════════════════════════════════
@@ -851,7 +770,7 @@ function clearErr(){ document.getElementById('errorMsg').style.display='none'; }
 // LAST.FM API
 // ═══════════════════════════════════════════════════
 // ▼▼▼ Cloudflare Worker 프록시 URL — 본인 Worker 주소로 변경 ▼▼▼
-const WORKER_URL = 'https://green-star-9ff0.redikkr.workers.dev/lfm';
+const WORKER_URL = 'https://lastfm-proxy.본인아이디.workers.dev/lfm';
 // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
 // API 키는 Cloudflare Worker 환경변수에 저장되어 있으므로
