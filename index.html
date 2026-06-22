@@ -910,7 +910,7 @@ async function discogs_artistImg(token, name){
   }
 }
 
-// ── Tier 1: Wikipedia – 강화된 검색 힌트 ────────
+// ── Tier 4: Wikipedia – 병렬 힌트 검색 ──────────
 // Uses generator=search so Wikipedia's own search engine finds the page.
 // This handles: redirects, disambiguation, alternate romanizations,
 // and non-Latin scripts that don't match page titles exactly.
@@ -952,47 +952,55 @@ async function wikiSearchImg(lang, query, extraHint=''){
 
 async function wiki_artistImg(name){
   const script = detectScript(name);
+  let queries;
 
   if(script === 'ko'){
-    // 한국어: ko.wikipedia 우선, 다양한 힌트 시도
-    return (
-      await wikiSearchImg('ko', name, '가수') ||
-      await wikiSearchImg('ko', name, '음악 그룹') ||
-      await wikiSearchImg('ko', name, '밴드') ||
-      await wikiSearchImg('ko', name, '음악') ||
-      await wikiSearchImg('ko', name) ||
-      await wikiSearchImg('en', name, 'South Korean singer') ||
-      await wikiSearchImg('en', name, 'K-pop group') ||
-      await wikiSearchImg('en', name, 'Korean singer') ||
-      await wikiSearchImg('en', name, 'K-pop') ||
-      null
-    );
+    queries = [
+      ['ko', name, '가수'],
+      ['ko', name, '음악 그룹'],
+      ['ko', name, '밴드'],
+      ['en', name, 'South Korean singer'],
+      ['en', name, 'K-pop'],
+      ['en', name, 'Korean singer'],
+    ];
+  } else if(script === 'ja' || script === 'cjk'){
+    queries = [
+      ['ja', name, '歌手'],
+      ['ja', name, '音楽グループ'],
+      ['en', name, 'Japanese singer'],
+      ['en', name, 'singer'],
+    ];
+  } else {
+    queries = [
+      ['en', name, 'singer'],
+      ['en', name, 'band music'],
+      ['en', name, 'rapper hip hop'],
+      ['en', name, 'musician'],
+      ['en', name, 'rock band'],
+      ['en', name, 'DJ producer'],
+    ];
   }
 
-  if(script === 'ja' || script === 'cjk'){
-    // 일본어/CJK
-    return (
-      await wikiSearchImg('ja', name, '歌手') ||
-      await wikiSearchImg('ja', name, '音楽グループ') ||
-      await wikiSearchImg('ja', name, '音楽') ||
-      await wikiSearchImg('ja', name) ||
-      await wikiSearchImg('en', name, 'Japanese singer') ||
-      await wikiSearchImg('en', name, 'singer') ||
-      null
+  // 모든 힌트를 병렬 요청 → 첫 번째 성공 반환 (Promise.any)
+  try{
+    return await Promise.any(
+      queries.map(([lang, q, hint]) =>
+        wikiSearchImg(lang, q, hint).then(r => r ?? Promise.reject(new Error('no img')))
+      )
     );
-  }
+  }catch{ return null; }
+}
 
-  // 영어/라틴 계열: 다양한 장르 힌트 추가
-  return (
-    await wikiSearchImg('en', name, 'singer') ||
-    await wikiSearchImg('en', name, 'band music') ||
-    await wikiSearchImg('en', name, 'rapper hip hop') ||
-    await wikiSearchImg('en', name, 'musician') ||
-    await wikiSearchImg('en', name, 'rock band') ||
-    await wikiSearchImg('en', name, 'DJ producer') ||
-    await wikiSearchImg('en', name) ||
-    null
-  );
+// ── Tier 1: Last.fm (이미 가져온 응답에서 추출 — 추가 호출 없음) ──
+// user.gettopartists 응답의 image 배열 활용. 2019년 이후 placeholder 반환이
+// 많아졌으나, 일부 아티스트는 여전히 유효한 이미지를 제공.
+function lfmArtistImg(item){
+  const PH = '2a96cbd8b46e442fc41c2b86b821562f';
+  for(const sz of ['extralarge','large','mega','medium']){
+    const f = (item.image||[]).find(i=>i.size===sz);
+    if(f?.['#text'] && !f['#text'].includes(PH) && f['#text'].trim()) return f['#text'];
+  }
+  return null;
 }
 
 // ── Tier 2: TheAudioDB ───────────────────────────
@@ -1032,36 +1040,40 @@ function dz_artistImg(name){
   });
 }
 
-// ── Cascading fetch (token 있으면 Discogs 우선) ──
-async function getArtistImg(name, discogsToken){
-  // Tier 0: Discogs (토큰 있을 때만)
+// ── Cascading fetch — 효율 순서 ──────────────────
+// 우선순위: Discogs(토큰) → Last.fm(무료출처) → TADB → Deezer → Wikipedia(병렬)
+async function getArtistImg(name, discogsToken, lfmImg){
+  // Tier 0: Discogs — 최고 품질, 토큰 있을 때만
   if(discogsToken){
     const img0 = await discogs_artistImg(discogsToken, name);
     if(img0) return img0;
   }
-  // Tier 1: Wikipedia (강화된 힌트)
-  const img1 = await wiki_artistImg(name);
-  if(img1) return img1;
-  // Tier 2: TheAudioDB
+  // Tier 1: Last.fm — 추가 API 호출 없음 (이미 가져온 데이터)
+  if(lfmImg) return lfmImg;
+  // Tier 2: TheAudioDB — 단일 호출, 빠름
   const img2 = await tadb_artistImg(name);
   if(img2) return img2;
-  // Tier 3: Deezer JSONP
-  return await dz_artistImg(name);
+  // Tier 3: Deezer JSONP — 단일 호출
+  const img3 = await dz_artistImg(name);
+  if(img3) return img3;
+  // Tier 4: Wikipedia — 병렬 호출, 느리지만 광범위
+  return await wiki_artistImg(name);
 }
 
-async function fetchAllArtistImgs(names, discogsToken, onProgress){
-  const out = new Array(names.length).fill(null);
-  // Discogs 2-step call = 2 API calls per artist.
-  // Rate limit: 60 req/min with token → safe with batch=2, delay=500ms
-  // (~2*2/0.5 = 8 req/sec → 480/min — still under but cautious: batch=2 = 4 req/0.5s = OK)
-  // Without token: batch=4, delay=100ms (Wikipedia/TADB/Deezer are lenient)
+async function fetchAllArtistImgs(items, discogsToken, onProgress){
+  const out = new Array(items.length).fill(null);
+  // Discogs: 아티스트당 2 API 호출, rate limit 60req/min → batch=2, delay=500ms
+  // 토큰 없음: Last.fm→TADB→Deezer→Wiki 순, 여유롭게 batch=4, delay=100ms
   const BATCH = discogsToken ? 2 : 4;
   const DELAY = discogsToken ? 500 : 100;
-  for(let i=0;i<names.length;i+=BATCH){
-    const res=await Promise.all(names.slice(i,i+BATCH).map(n=>getArtistImg(n, discogsToken)));
+  for(let i=0;i<items.length;i+=BATCH){
+    const batch = items.slice(i, i+BATCH);
+    const res = await Promise.all(
+      batch.map(item => getArtistImg(item.name, discogsToken, lfmArtistImg(item)))
+    );
     res.forEach((r,j)=>{ out[i+j]=r; });
-    onProgress(Math.min(i+BATCH,names.length));
-    if(i+BATCH<names.length) await delay(DELAY);
+    onProgress(Math.min(i+BATCH, items.length));
+    if(i+BATCH<items.length) await delay(DELAY);
   }
   return out;
 }
@@ -1553,9 +1565,11 @@ async function generateCollage(){
 
     if(state.type==='artist'){
       const discogsToken = document.getElementById('discogsToken').value.trim();
-      const srcLabel = discogsToken ? 'Discogs→Wiki→TADB→Deezer' : 'Wikipedia→TADB→Deezer';
+      const srcLabel = discogsToken
+        ? 'Discogs → Last.fm → TADB → Deezer → Wiki'
+        : 'Last.fm → TADB → Deezer → Wiki';
       setLoading(`아티스트 사진 검색 중 (${srcLabel})...`,`0 / ${items.length}`,10);
-      const urls=await fetchAllArtistImgs(items.map(i=>i.name), discogsToken, done=>{
+      const urls=await fetchAllArtistImgs(items, discogsToken, done=>{
         setLoading('아티스트 이미지 검색 중...',`${done} / ${items.length}`,10+Math.round(done/items.length*45));
       });
       let d=0;
